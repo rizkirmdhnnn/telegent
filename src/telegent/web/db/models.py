@@ -67,6 +67,9 @@ class TelegramAccount(TimestampMixin, Base):
     tg_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tg_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tg_first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    #: Nama sesi (`*.session`) yang dipakai saat login berhasil; dipakai untuk
+    #: mendeteksi perubahan `telegram_session_name` setelah login (butuh login ulang).
+    session_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(
         String(32), default="not_configured", nullable=False
     )

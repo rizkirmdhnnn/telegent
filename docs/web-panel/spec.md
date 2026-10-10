@@ -145,13 +145,14 @@ Semua tabel punya `created_at`/`updated_at` (UTC) kecuali dinyatakan lain.
 ### 5.3 `telegram_account` (satu baris)
 | Kolom | Tipe | Catatan |
 |---|---|---|
-| id | int PK | |
+| id | int PK | selalu `1` (keputusan: satu akun aktif) |
 | phone | str? | nomor terdaftar |
 | tg_user_id | int? | id akun setelah login |
 | tg_username | str? | @username |
 | tg_first_name | str? | |
+| session_name | str? | nama sesi dipakai saat login; dibandingkan dengan `telegram_session_name` untuk mendeteksi `session_mismatch` |
 | status | str | `not_configured`/`logged_out`/`logged_in`/`error` |
-| last_error | str? | pesan error terakhir (tanpa secret) |
+| last_error | str? | **kode galat stabil** terakhir (bukan pesan bebas), mis. `code_invalid` |
 | logged_in_at | datetime? | |
 
 ### 5.4 `login_flow` (state sementara login)
@@ -263,15 +264,30 @@ Validasi Gemini: panggilan model ringan / cek format + opsi ping bila memungkink
 ### 6.4 Telegram (akun & login)
 | Method | Path | Body | Respons |
 |---|---|---|---|
-| GET | `/telegram/status` | — | `{status, phone?, user?, last_error?}` |
-| POST | `/telegram/login/start` | `{phone}` | `{flow_id, next: "code"\|"password"}` |
+| GET | `/telegram/status` | — | `{status, phone?, user?, last_error?, logged_in_at?, credentials_configured, session_name, session_mismatch}` |
+| POST | `/telegram/login/start` | `{phone}` | `{flow_id, next: "code"}` |
 | POST | `/telegram/login/verify` | `{flow_id, code}` | `{next: "password"\|"done"}` |
 | POST | `/telegram/login/password` | `{flow_id, password}` | `{ok}` |
 | POST | `/telegram/login/cancel` | `{flow_id}` | `{ok}` |
 | POST | `/telegram/logout` | — | `{ok}` |
 
+Semua mutasi memerlukan sesi admin + `X-CSRF-Token`; `GET /status` cukup sesi admin.
+`login/start` membatalkan flow yang masih terbuka (single-tenant, satu alur aktif).
+
 Penanganan error: `phone_invalid`, `code_invalid`, `code_expired`, `password_invalid`,
-`flood_wait` (+`retry_after`), `api_credentials_missing`.
+`flood_wait`, `api_credentials_missing`, `network_error`, `session_invalid`,
+`telegram_error`, `flow_not_found`, `flow_expired`, `bot_running`, `already_logged_in`,
+`account_not_logged_in`.
+
+> **`flood_wait`:** nilai tunggu dikirim pada `error.fields.retry_after` (dalam detik),
+> mengikuti amplop galat §6. Contoh: `{"error": {"code": "flood_wait", "fields":
+> {"retry_after": 300}}}`.
+>
+> **`bot_running` (409):** login maupun logout ditolak selama runtime `running` —
+> berkas sesi dipakai bot yang sedang hidup.
+>
+> **`session_mismatch`:** bila `telegram_session_name` diubah setelah login, baris akun
+> tetap `logged_in` (sesi lama masih ada) tetapi UI menampilkan perlunya login ulang (Q10).
 
 ### 6.5 Runtime
 | Method | Path | Body | Respons |
@@ -355,10 +371,21 @@ Gagal → catat `failed_attempts`; melebihi ambang → lockout sementara.
 
 ### 8.4 Login Telegram
 `login/start` membuat klien Pyrogram tak-terautentikasi (butuh api_id/hash sudah ada),
-`send_code(phone)` → simpan `phone_code_hash` → `verify(code)`:
-- sukses → buat sesi (file `.session`) → status `logged_in` → audit.
-- `SessionPasswordNeeded` → minta password → `check_password`.
-- error → status/`last_error` ter-i18n.
+`send_code(phone)` → simpan `phone_code_hash` ke `login_flow` (TTL ±10 menit) →
+`verify(code)`:
+- sukses → sesi disimpan sebagai `*.session` di `TELEGENT_DATA_DIR`, status `logged_in`
+  (beserta `tg_user_id`/username/nama) → audit.
+- `SessionPasswordNeeded` → alur berpindah ke `awaiting_password` → `check_password`.
+- error → `last_error` diisi **kode galat stabil**, bukan pesan mentah; `phone_code_hash`,
+  kode OTP, dan password tidak pernah ditulis ke log (nilai Sensitive didaftarkan ke
+  `SecretRedactor` sebagai pengaman kedua).
+- `login/cancel` membuang flow; flow kedaluwarsa dibersihkan tiap 5 menit.
+- `logout` memanggil `log_out` pada klien lalu menghapus seluruh `*.session*` di direktori
+  data (keputusan satu akun aktif). Kegagalan sisi Telegram tidak menghalangi penghapusan
+  lokal; kode galatnya dicatat di `last_error`.
+
+> Login/logout ditolak dengan `bot_running` selama runtime berjalan; setelah login sukses
+> admin diminta menjalankan bot dari panel (kontrol penuh menyusul di F1/F2).
 
 ### 8.5 Monitoring
 - Runtime menerbitkan event ke `EventBus`; endpoint SSE meneruskan ke klien.

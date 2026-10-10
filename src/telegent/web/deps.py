@@ -13,6 +13,7 @@ from telegent.web.errors import APIError
 from telegent.web.runtime import RuntimeController
 from telegent.web.security import CSRF_COOKIE, SESSION_COOKIE, AdminSession, SessionManager
 from telegent.web.settings_store import SettingsStore
+from telegent.web.telegram_login import TelegramLoginService
 
 
 def get_bootstrap(request: Request) -> BootstrapConfig:
@@ -52,6 +53,14 @@ def get_runtime(request: Request) -> RuntimeController:
     return cast(RuntimeController, runtime)
 
 
+def get_telegram_login(request: Request) -> TelegramLoginService:
+    """Layanan login Telegram (D1); dibuat pada lifespan."""
+    service = request.app.state.telegram_login
+    if service is None:
+        raise APIError(503, "telegram_unavailable", "Layanan login Telegram belum siap.")
+    return cast(TelegramLoginService, service)
+
+
 def current_session(request: Request) -> AdminSession | None:
     session = get_sessions(request).get(request.cookies.get(SESSION_COOKIE))
     return session
@@ -81,5 +90,6 @@ DatabaseDep = Annotated[Database, Depends(get_database)]
 StoreDep = Annotated[SettingsStore, Depends(get_settings_store)]
 CipherDep = Annotated[SecretCipher, Depends(get_cipher)]
 RuntimeDep = Annotated[RuntimeController, Depends(get_runtime)]
+TelegramLoginDep = Annotated[TelegramLoginService, Depends(get_telegram_login)]
 AdminDep = Annotated[AdminSession, Depends(require_admin)]
 CsrfDep = Annotated[AdminSession, Depends(require_csrf)]

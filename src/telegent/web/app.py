@@ -6,8 +6,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import AsyncIterator, cast
 
@@ -29,6 +30,7 @@ from telegent.web.routers import ROUTERS
 from telegent.web.runtime import RuntimeController
 from telegent.web.security import SessionManager
 from telegent.web.settings_store import SettingsStore
+from telegent.web.telegram_login import TelegramLoginService
 from telegent.web.tools_store import tool_configs_for_runtime
 
 log = logging.getLogger("telegent.web")
@@ -85,6 +87,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.events = bus
     app.state.log_buffer = log_buffer
     app.state.redactor = redactor
+    app.state.telegram_login = TelegramLoginService(
+        db,
+        store,
+        data_dir=cfg.data_dir,
+        redactor=redactor,
+    )
+    cleanup_task = asyncio.create_task(
+        app.state.telegram_login.cleanup_loop(), name="telegent-login-cleanup"
+    )
     app.state.runtime = RuntimeController(
         store,
         session_dir=cfg.data_dir,
@@ -108,8 +119,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         # Runtime controller (A7) ditutup sebelum database.
         await app.state.runtime.shutdown()
+        cleanup_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await cleanup_task
         root_logger.removeHandler(log_handler)
         app.state.settings_store = None
+        app.state.telegram_login = None
         app.state.runtime = None
         app.state.events = None
         await db.dispose()
@@ -217,6 +232,7 @@ def create_app(config: BootstrapConfig | None = None) -> FastAPI:
     app.state.runtime = None
     app.state.cipher = None
     app.state.settings_store = None
+    app.state.telegram_login = None
     # Sesi dibuat di luar lifespan agar pengujian tetap bisa memakai app tanpa boot.
     app.state.sessions = SessionManager(cfg.session_ttl_hours)
 
