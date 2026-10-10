@@ -6,6 +6,7 @@
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
+	import { t } from '$lib/i18n';
 
 	interface Props {
 		children?: Snippet;
@@ -47,7 +48,7 @@
 				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 			</svg>
-			<p class="text-xs font-medium text-slate-500 dark:text-slate-400">Memuat Telegent...</p>
+			<p class="text-xs font-medium text-slate-500 dark:text-slate-400">{t('app.loading')}</p>
 		</div>
 	</div>
 {:else}

@@ -1,34 +1,33 @@
 <script lang="ts">
-	import { theme } from '$lib/stores/theme.svelte';
+	import { theme, type Theme } from '$lib/stores/theme.svelte';
 	import { apiFetch } from '$lib/api';
+	import { t } from '$lib/i18n';
 
-	async function toggleTheme() {
-		theme.toggle();
+	async function cycleTheme() {
+		theme.cycle();
 		try {
 			await apiFetch('/auth/me', {
 				method: 'PATCH',
 				body: { theme: theme.current }
 			});
 		} catch {
-			// Sesi belum login
+			// Belum login: tema tetap tersimpan di localStorage.
 		}
 	}
 </script>
 
 <button
 	type="button"
-	onclick={toggleTheme}
-	title="Ganti Tema"
-	aria-label="Ganti Tema"
+	onclick={cycleTheme}
+	title={t('theme.title')}
+	aria-label={t('theme.title')}
 	class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
 >
-	{#if theme.current === 'dark'}
-		<!-- Moon icon -->
+	{#if theme.resolved === 'dark'}
 		<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 			<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
 		</svg>
 	{:else}
-		<!-- Sun icon -->
 		<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 			<circle cx="12" cy="12" r="5"></circle>
 			<line x1="12" y1="1" x2="12" y2="3"></line>

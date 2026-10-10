@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth.svelte';
 	import { locale } from '$lib/stores/locale.svelte';
-	import { theme } from '$lib/stores/theme.svelte';
+	import { theme, type Theme } from '$lib/stores/theme.svelte';
 	import { apiFetch, ApiError } from '$lib/api';
 	import { t } from '$lib/i18n';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -127,7 +127,7 @@
 
 	async function updatePreference(field: 'locale' | 'theme', val: string) {
 		if (field === 'locale') locale.set(val as any);
-		if (field === 'theme') theme.set(val as any);
+		if (field === 'theme') theme.set(val as Theme);
 		try {
 			await apiFetch('/auth/me', {
 				method: 'PATCH',

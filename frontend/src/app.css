@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/*
+	Tailwind v4 secara bawaan memakai `@media (prefers-color-scheme: dark)` untuk
+	variant `dark:`. Panel ini mengendalikannya sendiri lewat kelas `.dark` pada
+	<html> (lihat ThemeStore), jadi variantnya harus diganti ke mode kelas.
+	Tanpa baris ini, tombol tema tidak berpengaruh sama sekali.
+*/
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
 	:root {
 		--background: 0 0% 100%;

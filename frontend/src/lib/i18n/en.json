@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "Telegent Web Panel",
-    "subtitle": "Telegram Voice AI Control Panel"
+    "subtitle": "Telegram Voice AI Control Panel",
+    "loading": "Loading Telegent..."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -200,5 +201,8 @@
     "kredensial": "API Credentials",
     "akun_telegram": "Telegram Account",
     "audio": "Advanced Audio Parameters"
+  },
+  "theme": {
+    "title": "Switch theme"
   }
 }

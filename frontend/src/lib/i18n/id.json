@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "Telegent Web Panel",
-    "subtitle": "Panel Kontrol AI Voice Bot Telegram"
+    "subtitle": "Panel Kontrol AI Voice Bot Telegram",
+    "loading": "Memuat Telegent..."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -200,5 +201,8 @@
     "kredensial": "Kredensial API",
     "akun_telegram": "Akun Telegram",
     "audio": "Parameter Audio Lanjutan"
+  },
+  "theme": {
+    "title": "Ganti tema"
   }
 }

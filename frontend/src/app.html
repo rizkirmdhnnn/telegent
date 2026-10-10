@@ -5,6 +5,20 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Telegent Web Panel</title>
 		%sveltekit.head%
+		<script>
+			// Terapkan tema sebelum render pertama agar tidak ada kedipan terang.
+			// Logikanya sengaja sama dengan ThemeStore.apply().
+			try {
+				var tersimpan = localStorage.getItem('telegent_theme');
+				var gelap =
+					tersimpan === 'dark' ||
+					(tersimpan !== 'light' &&
+						window.matchMedia('(prefers-color-scheme: dark)').matches);
+				document.documentElement.classList.toggle('dark', gelap);
+			} catch (e) {
+				/* localStorage diblokir: gunakan tema bawaan sistem */
+			}
+		</script>
 	</head>
 	<body class="bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-50">
 		<div style="display: contents">%sveltekit.body%</div>
