@@ -109,7 +109,9 @@ class BusLogHandler(EventLogHandler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             payload = self._payload(record)
-            self._buffer.add(payload)
-            self._bus.publish("log", payload)
+            # Terbitkan lebih dulu agar ring buffer bisa menyimpan id event:
+            # SSE memakai id itu untuk melewati entri yang sudah di-replay.
+            event = self._bus.publish("log", payload)
+            self._buffer.add({**payload, "id": event.id})
         except Exception:  # noqa: BLE001
             self.handleError(record)

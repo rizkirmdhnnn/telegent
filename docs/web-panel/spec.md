@@ -328,7 +328,19 @@ Penanganan error: `phone_invalid`, `code_invalid`, `code_expired`, `password_inv
 | GET | `/calls/{id}` | — | detail + counts |
 | GET | `/calls/{id}/transcript` | — | daftar transkrip |
 | GET | `/calls/{id}/tools` | — | daftar tool call |
+| GET | `/calls/export` | `from?, to?, user?, outcome?` | CSV seluruh hasil filter (Q14) |
 | POST | `/calls/{id}/hangup` | — | `{ok}` (akhiri panggilan aktif) |
+
+> **Catatan Fase 3:**
+> - `{id}` adalah `call_record.id`, bukan `tg_call_id`; `hangup` memetakan id itu
+>   ke sesi runtime melalui `tg_call_id`.
+> - `GET /calls/active` **tidak** menulis ke database dan tidak melDenturkan
+>   database sama sekali — sumbernya adalah memori runtime. Bot yang berhenti
+>   menghasilkan `{"calls": [], "count": 0}` (bukan galat).
+> - `hangup` menolak `404` dengan kode `call_not_found` (record tak ada) atau
+>   `call_not_active` (panggilan sudah selesai); kedua kasus tetap dicatat audit.
+> - `/calls/export` mengekspor **seluruh** hasil filter, bukan hanya halaman
+>   aktif, dibatasi 10.000 baris.
 
 ### 6.7 Tool
 | Method | Path | Body | Respons |
@@ -362,8 +374,22 @@ Format: `event: <tipe>\ndata: <json>\n\n`. Sertakan `id:` untuk resume ringan da
 | `log` | `{"level": "INFO", "logger": "telegent.call", "message": "...", "at": "..."}` |
 | `runtime.error` | `{"message": "..."}` |
 
+> **Catatan Fase 3:** penanda payload memakai `tg_call_id` (bukan `call_id`)
+> supaya tidak bentrok dengan `call_record.id` yang dipakai endpoint §6.6.
+> Ketiga endpoint narrative (`call.*`, `transcript`, `tool_call`) juga
+> menyertakan `record_id` bila barisnya sudah dibuat.
+
 Log stream memakai buffer terbatas (`log_buffer_lines`); saat klien terlalu lambat,
 event di-drop (bukan memblok bangunan penerbit).
+
+> **Bentuk SSE (Fase 3):** `retry: 3000` dikirim sekali di awal, lalu tiap event
+> sebagai `id:`/`event:`/`data:`. Heartbeat tiap 15 detik dikirim sebagai
+> **komentar** `: ping` — bukan event — sehingga `EventSource` di browser tidak
+> memicu handler apa pun. Klien baru menerima replay: 100 event terakhir dari
+> bus (`/events/stream`, tanpa tipe `log`) atau ring buffer log
+> (`/logs/stream`); event yang sudah tercakup replay dilewati agar tidak dobel.
+> Setiap klien punya antrean lokal berbatas 200; saat penuh, event dibuang —
+> penerbit (bot) tidak pernah menunggu klien browser.
 
 ---
 

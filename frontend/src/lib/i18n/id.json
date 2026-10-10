@@ -209,7 +209,10 @@
     "bot_running": "Bot sedang berjalan. Hentikan bot sebelum mengganti akun Telegram.",
     "flow_not_found": "Alur login sudah berakhir. Mulai ulang alur.",
     "flow_expired": "Alur login sudah kedaluwarsa. Mulai ulang alur.",
-    "telegram_unreachable": "Tidak dapat terhubung ke server Telegram."
+    "telegram_unreachable": "Tidak dapat terhubung ke server Telegram.",
+    "call_not_found": "Panggilan tidak ditemukan.",
+    "call_not_active": "Panggilan tidak sedang aktif.",
+    "invalid_filter": "Filter yang diminta tidak valid."
   },
   "labels": {
     "telegram_api_id": "Telegram API ID",

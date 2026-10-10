@@ -5,7 +5,9 @@ from __future__ import annotations
 from telegent.web.routers import (
     audit,
     auth,
+    calls,
     credentials,
+    events,
     health,
     runtime,
     settings,
@@ -25,13 +27,17 @@ ROUTERS = [
     tools.router,
     telegram.router,
     runtime.router,
+    calls.router,
+    events.router,
 ]
 
 __all__ = [
     "ROUTERS",
     "audit",
     "auth",
+    "calls",
     "credentials",
+    "events",
     "health",
     "runtime",
     "settings",

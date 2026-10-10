@@ -209,7 +209,10 @@
     "bot_running": "The bot is running. Stop it before switching the Telegram account.",
     "flow_not_found": "The login flow has already ended. Restart the flow.",
     "flow_expired": "The login flow has expired. Restart the flow.",
-    "telegram_unreachable": "Could not reach the Telegram server."
+    "telegram_unreachable": "Could not reach the Telegram server.",
+    "call_not_found": "Call not found.",
+    "call_not_active": "This call is no longer active.",
+    "invalid_filter": "The requested filter is not valid."
   },
   "labels": {
     "telegram_api_id": "Telegram API ID",

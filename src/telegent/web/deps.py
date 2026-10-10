@@ -7,6 +7,7 @@ from typing import Annotated, cast
 from fastapi import Depends, Request
 
 from telegent.web.bootstrap import BootstrapConfig
+from telegent.web.call_recorder import CallRecorder
 from telegent.web.crypto import SecretCipher
 from telegent.web.db.base import Database
 from telegent.web.errors import APIError
@@ -53,6 +54,14 @@ def get_runtime(request: Request) -> RuntimeController:
     return cast(RuntimeController, runtime)
 
 
+def get_call_recorder(request: Request) -> CallRecorder:
+    """Perekam panggilan (E1); dibuat pada lifespan."""
+    recorder = request.app.state.call_recorder
+    if recorder is None:
+        raise APIError(503, "runtime_unavailable", "Pemantau panggilan belum siap.")
+    return cast(CallRecorder, recorder)
+
+
 def get_telegram_login(request: Request) -> TelegramLoginService:
     """Layanan login Telegram (D1); dibuat pada lifespan."""
     service = request.app.state.telegram_login
@@ -90,6 +99,7 @@ DatabaseDep = Annotated[Database, Depends(get_database)]
 StoreDep = Annotated[SettingsStore, Depends(get_settings_store)]
 CipherDep = Annotated[SecretCipher, Depends(get_cipher)]
 RuntimeDep = Annotated[RuntimeController, Depends(get_runtime)]
+CallRecorderDep = Annotated[CallRecorder, Depends(get_call_recorder)]
 TelegramLoginDep = Annotated[TelegramLoginService, Depends(get_telegram_login)]
 AdminDep = Annotated[AdminSession, Depends(require_admin)]
 CsrfDep = Annotated[AdminSession, Depends(require_csrf)]

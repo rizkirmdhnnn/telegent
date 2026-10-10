@@ -54,7 +54,7 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 ## Fase 3 — Pemantauan
 
 - [x] **E1** Hook persistensi: call record, transkrip, tool call — L
-- [ ] **E2** API pemantauan (aktif, riwayat, detail, hangup) — M
+- [x] **E2** API pemantauan (aktif, riwayat, detail, hangup) — M
 - [ ] **E3** UI pemantauan (dashboard, daftar/detail panggilan, log live) — L
 
 ## Fase 4 — Kontrol & retensi
