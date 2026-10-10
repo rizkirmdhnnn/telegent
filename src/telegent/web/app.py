@@ -18,6 +18,8 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from telegent import __version__
 from telegent.web.bootstrap import BootstrapConfig, load_bootstrap
+from telegent.web.db import Database
+from telegent.web.db.migrate import upgrade_to_head_async
 from telegent.web.routers import ROUTERS
 
 log = logging.getLogger("telegent.web")
@@ -44,6 +46,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Siapkan dan tutup resource web selama aplikasi hidup."""
     cfg = cast(BootstrapConfig, app.state.bootstrap)
     cfg.ensure_data_dir()
+
+    # Migrasi jalan di thread terpisah: Alembic (driver async) memakai
+    # asyncio.run() yang tidak boleh dipanggil dari loop yang sedang aktif.
+    await upgrade_to_head_async(cfg.db_url)
+    db = Database(cfg.db_url)
+    app.state.db = db
     log.info(
         "Web panel siap (data=%s, db=%s, frontend=%s).",
         cfg.data_dir,
@@ -53,7 +61,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        # Gisikan dengan penutupan database (A2) dan runtime controller (A7).
+        # Runtime controller (A7) akan menutup diri sebelum database.
+        await db.dispose()
+        app.state.db = None
         log.info("Web panel berhenti.")
 
 

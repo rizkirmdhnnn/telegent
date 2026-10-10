@@ -31,7 +31,16 @@ def test_create_app_menempelkan_bootstrap(app: FastAPI, bootstrap: BootstrapConf
 def test_healthz_publik(client: TestClient) -> None:
     resp = client.get("/api/healthz")
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "service": "telegent-web", "version": __version__}
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["version"] == __version__
+    # Di luar lifespan, database belum disiapkan.
+    assert body["db"] == "not_started"
+
+
+def test_healthz_melaporkan_database_siap(bootstrap: BootstrapConfig) -> None:
+    with TestClient(create_app(bootstrap)) as client:
+        assert client.get("/api/healthz").json()["db"] == "ok"
 
 
 def test_root_menampilkan_placeholder(client: TestClient) -> None:
