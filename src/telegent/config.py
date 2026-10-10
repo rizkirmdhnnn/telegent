@@ -7,7 +7,12 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from telegent.ai.prompt import DEFAULT_GREETING_PROMPT, DEFAULT_SYSTEM_INSTRUCTION
+from telegent.ai.prompt import (
+    DEFAULT_GREETING_PROMPT,
+    DEFAULT_IDLE_FAREWELL,
+    DEFAULT_IDLE_PROMPT,
+    DEFAULT_SYSTEM_INSTRUCTION,
+)
 
 DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-live-preview"
 
@@ -60,6 +65,13 @@ class Settings(BaseSettings):
 
     # --- Logging ---
     log_level: str = "INFO"
+
+    # --- Anti-idle (penelpon tidak menjawab) ---
+    idle_enabled: bool = True
+    idle_prompt_seconds: float = 15.0
+    idle_hangup_seconds: float = 15.0
+    idle_prompt_instruction: str = DEFAULT_IDLE_PROMPT
+    idle_farewell_instruction: str = DEFAULT_IDLE_FAREWELL
 
     # --- Audio (parameter Telegram VoIP & Gemini) ---
     tg_sample_rate: int = 48000

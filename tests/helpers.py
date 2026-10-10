@@ -17,6 +17,7 @@ class FakeLiveSession:
         self._events = list(events or [])
         self.audio_sent: list[bytes] = []
         self.greetings: list[str] = []
+        self.prompts: list[str] = []
         self.tool_responses: list = []
         self.closed = False
 
@@ -25,6 +26,9 @@ class FakeLiveSession:
 
     async def send_greeting(self, prompt: str) -> None:
         self.greetings.append(prompt)
+
+    async def send_prompt(self, text: str) -> None:
+        self.prompts.append(text)
 
     async def send_tool_response(self, responses) -> None:
         self.tool_responses.extend(responses)

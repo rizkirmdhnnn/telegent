@@ -39,9 +39,13 @@ class GeminiLiveSession:
         )
 
     async def send_greeting(self, prompt: str) -> None:
+        await self.send_prompt(prompt)
+
+    async def send_prompt(self, text: str) -> None:
+        """Kirim teks (mis. instruksi sistem) sebagai giliran pengguna agar model merespons."""
         await self._ws.send_client_content(
             turns=[
-                genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])
+                genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=text)])
             ],
             turn_complete=True,
         )

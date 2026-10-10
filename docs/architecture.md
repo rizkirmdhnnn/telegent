@@ -64,7 +64,26 @@ menangani shutdown (SIGINT/SIGTERM).
 | `CALL_NOT_ACTIVE` | Tahan data signaling sampai call aktif, lalu flush; retry singkat |
 | Banyak panggilan | Semua state per-`CallSession`; `ntgcalls` callback dispatch per `user_id` |
 | Anti-penyalahgunaan | Whitelist + `MAX_CONCURRENT_CALLS` + rate-limit per pengguna (`rate_limit.CallRateLimiter`) + `MAX_CALL_DURATION` (watchdog di `CallSession`) |
+| Anti-idle | Penelpon diam → AI konfirmasi; tetap tanpa respons → ucapkan pamitan lalu akhiri otomatis (lihat bawah) |
 | Testability | Seam `AudioSink` / `LiveVoiceSession` + fake di `tests/helpers.py` |
+
+## Anti-idle (Penelpon Tidak Menjawab)
+
+Watchdog per sesi (`CallSession._idle_watchdog`) menjaga panggilan agar tidak menggantung:
+
+1. **Deteksi aktivitas penelpon** dari event yang sudah ada: `TranscriptIn`
+   (ucapan tertranskripsi) dan `Interrupted` (barge-in) → mereset timer
+   (`_note_caller_activity`).
+2. **Diam ≥ `IDLE_PROMPT_SECONDS`** (dan AI sudah selesai bicara, antrean audio
+   kosong, tidak ada tool berjalan) → AI **mengonfirmasi** ("masih di sana?")
+   lewat `LiveVoiceSession.send_prompt`.
+3. **Tanpa respons ≥ `IDLE_HANGUP_SECONDS`** setelah konfirmasi → AI diminta
+   mengucapkan **pamitan singkat**, lalu `schedule_hangup(min_wait=...)` menutup
+   panggilan setelah audio selesai diputar.
+
+Ambang dikonfigurasi via `IDLE_ENABLED`, `IDLE_PROMPT_SECONDS`,
+`IDLE_HANGUP_SECONDS`. Bila penelpon kembali bersuara, status konfirmasi direset
+sehingga siklus dapat berulang.
 
 ## Threading
 

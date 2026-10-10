@@ -34,6 +34,11 @@ GEMINI_SILENCE_16K = b"\x00" * 640
 HANGUP_QUIET_SEC = 0.5
 HANGUP_MAX_WAIT = 15.0
 
+# Anti-idle: konfirmasi bila penelpon diam, lalu akhiri bila tetap tidak ada respons.
+IDLE_CHECK_INTERVAL = 0.5
+IDLE_AI_QUIET_SEC = 1.5
+IDLE_FAREWELL_MIN_WAIT = 6.0
+
 LiveFactory = Callable[[], AbstractAsyncContextManager[LiveVoiceSession]]
 
 
@@ -88,12 +93,19 @@ class CallSession:
         self._ending = asyncio.Event()
         self._closing = False
 
-        # Pengakhiran panggilan oleh AI (tool end_call).
+        # Pengakhiran panggilan oleh AI (tool end_call) / watchdog anti-idle.
         self._hangup_task: Optional[asyncio.Task] = None
         self._hangup_scheduled = False
+        self._hangup_started = 0.0
+        self._hangup_min_wait = 0.0
         self._connected_at: Optional[float] = None
         self._last_output_activity = 0.0
         self.on_hangup: Optional[Callable[[], Awaitable[None]]] = None
+
+        # Anti-idle: penelpon tidak menjawab.
+        self._last_caller_activity = 0.0
+        self._idle_prompted = False
+        self._idle_deadline = 0.0
 
         self.is_greeting = True
         self.inbound_frame_count = 0
@@ -133,6 +145,7 @@ class CallSession:
         if not self.is_greeting:
             return
         self.is_greeting = False
+        self._last_caller_activity = time.monotonic()
         self._drain_queue(self.gemini_in_queue)
         self._inbound_framer.clear()
         self._log.info("Sapaan selesai; AI siap mendengarkan.")
@@ -148,6 +161,7 @@ class CallSession:
             async with self._live_factory() as live:
                 self._live = live
                 self._connected_at = time.monotonic()
+                self._last_caller_activity = self._connected_at
                 self.set_state(SessionState.ACTIVE)
                 try:
                     await live.send_greeting(self._settings.greeting_prompt)
@@ -158,6 +172,7 @@ class CallSession:
                 self._tasks.append(asyncio.create_task(self._gemini_receiver_worker()))
                 self._tasks.append(asyncio.create_task(self._telegram_audio_sender_worker()))
                 self._tasks.append(asyncio.create_task(self._auto_clear_greeting()))
+                self._tasks.append(asyncio.create_task(self._idle_watchdog()))
                 self._tasks.append(asyncio.create_task(self._enforce_max_duration()))
 
                 await self._ending.wait()
@@ -271,9 +286,11 @@ class CallSession:
                         await self._enqueue_outbound(frame)
                 elif isinstance(event, TranscriptIn):
                     self._log.info("[Penelpon] %s", event.text)
+                    self._note_caller_activity()
                 elif isinstance(event, TranscriptOut):
                     self._log.info("[AI] %s", event.text)
                 elif isinstance(event, Interrupted):
+                    self._note_caller_activity()
                     if not self.is_greeting:
                         self.flush_outbound()
                 elif isinstance(event, ToolCallEvent):
@@ -374,27 +391,39 @@ class CallSession:
             task.cancel()
 
     # --------------------------------------------------------------- hangup
-    def schedule_hangup(self) -> None:
+    def schedule_hangup(self, min_wait: float = 0.0) -> None:
         """Jadwalkan pengakhiran panggilan setelah audio jawaban selesai diputar.
 
-        Sinkron: aman dipanggil dari handler tool (tidak memblokir penerimaan).
+        `min_wait` memberi tenggang minimal (detik) sebelum panggilan ditutup —
+        dipakai saat kita minta AI mengucapkan pamitan lebih dulu. Sinkron: aman
+        dipanggil dari handler tool (tidak memblokir penerimaan).
         """
         if self._hangup_scheduled or self._closing:
             return
         self._hangup_scheduled = True
-        self._last_output_activity = time.monotonic()
+        now = time.monotonic()
+        self._hangup_started = now
+        self._hangup_min_wait = min_wait
+        self._last_output_activity = now
         self._log.info("Permintaan mengakhiri panggilan; menunggu audio habis diputar.")
         self._hangup_task = asyncio.create_task(
             self._hangup_when_drained(), name=f"hangup-{self.user_id}"
         )
 
     async def _hangup_when_drained(self) -> None:
-        # Tunggu sampai tidak ada aktivitas audio/ giliran selama HANGUP_QUIET_SEC
-        # (agar kalimat pamitan & lanjutan model tidak terpotong).
+        # Tunggu sampai tidak ada aktivitas audio/giliran selama HANGUP_QUIET_SEC
+        # (agar kalimat pamitan & lanjutan model tidak terpotong), dan minimal
+        # `min_wait` sejak penjadwalan.
         deadline = time.monotonic() + HANGUP_MAX_WAIT
         while time.monotonic() < deadline:
-            idle = time.monotonic() - self._last_output_activity
-            if self.tg_out_queue.empty() and idle >= HANGUP_QUIET_SEC:
+            now = time.monotonic()
+            idle = now - self._last_output_activity
+            waited = now - self._hangup_started
+            if (
+                self.tg_out_queue.empty()
+                and idle >= HANGUP_QUIET_SEC
+                and waited >= self._hangup_min_wait
+            ):
                 break
             await asyncio.sleep(0.05)
 
@@ -406,6 +435,59 @@ class CallSession:
                 raise
             except Exception:  # noqa: BLE001
                 self._log.exception("Gagal mengakhiri panggilan.")
+
+    # --------------------------------------------------------------- anti-idle
+    def _note_caller_activity(self) -> None:
+        """Catat bahwa penelpon bersuara (mereset timer diam & status konfirmasi)."""
+        self._last_caller_activity = time.monotonic()
+        self._idle_prompted = False
+
+    async def _send_prompt(self, text: str) -> None:
+        if self._live is None:
+            return
+        try:
+            await self._live.send_prompt(text)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            self._log.warning("Gagal mengirim prompt: %s", exc)
+
+    async def _idle_watchdog(self) -> None:
+        """Konfirmasi bila penelpon diam; akhiri bila tetap tidak ada respons."""
+        if not self._settings.idle_enabled:
+            return
+        try:
+            while self.state == SessionState.ACTIVE:
+                await asyncio.sleep(IDLE_CHECK_INTERVAL)
+                if self.is_greeting:
+                    continue
+
+                now = time.monotonic()
+                if not self._idle_prompted:
+                    caller_idle = now - self._last_caller_activity
+                    ai_idle = now - self._last_output_activity
+                    if (
+                        caller_idle >= self._settings.idle_prompt_seconds
+                        and ai_idle >= IDLE_AI_QUIET_SEC
+                        and self.tg_out_queue.empty()
+                        and not self._tool_tasks
+                    ):
+                        self._idle_prompted = True
+                        self._idle_deadline = now + self._settings.idle_hangup_seconds
+                        self._log.info(
+                            "Penelpon diam %.0f dtk; mengirim konfirmasi.", caller_idle
+                        )
+                        await self._send_prompt(self._settings.idle_prompt_instruction)
+                elif now >= self._idle_deadline:
+                    self._log.info("Penelpon tetap tidak menjawab; mengakhiri panggilan.")
+                    self._idle_prompted = False
+                    await self._send_prompt(self._settings.idle_farewell_instruction)
+                    self.schedule_hangup(min_wait=IDLE_FAREWELL_MIN_WAIT)
+                    break
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            self._log.exception("Idle watchdog error: %s", exc)
 
     @property
     def duration_seconds(self) -> int:

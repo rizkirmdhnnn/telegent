@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import numpy as np
 from helpers import FakeLiveSession, FakeSink, make_session
 
-from telegent.ai.events import AudioOut, ToolCallEvent, TurnComplete
+from telegent.ai.events import AudioOut, ToolCallEvent, TranscriptIn, TurnComplete
 from telegent.ai.tools.registry import ToolRegistry
 from telegent.ai.tools.spec import ToolSpec
 from telegent.telegram.call_session import SessionState
@@ -143,6 +144,81 @@ async def test_schedule_hangup_idempoten(settings):
     assert session._hangup_task is first
 
     await session.close()
+
+
+async def test_idle_watchdog_mengirim_konfirmasi(settings):
+    settings.idle_enabled = True
+    settings.idle_prompt_seconds = 0.2
+    settings.idle_hangup_seconds = 100.0
+
+    live = FakeLiveSession()
+    session = make_session(settings=settings, live=live)
+    session._live = live
+    session.state = SessionState.ACTIVE
+    session.is_greeting = False
+    session._last_caller_activity = time.monotonic()
+    session._last_output_activity = time.monotonic() - 100.0  # AI sudah lama diam
+
+    task = asyncio.create_task(session._idle_watchdog())
+    try:
+        ok = await _wait(lambda: len(live.prompts) >= 1, timeout=3.0)
+    finally:
+        await _cancel(task)
+
+    assert ok, "harus mengirim konfirmasi setelah penelpon diam"
+    assert live.prompts[0] == settings.idle_prompt_instruction
+
+
+async def test_idle_watchdog_mengakhiri_bila_tanpa_respons(settings):
+    settings.idle_enabled = True
+    settings.idle_prompt_seconds = 0.1
+    settings.idle_hangup_seconds = 0.2
+
+    live = FakeLiveSession()
+    session = make_session(settings=settings, live=live)
+    session._live = live
+    session.state = SessionState.ACTIVE
+    session.is_greeting = False
+    session._last_caller_activity = time.monotonic()
+    session._last_output_activity = time.monotonic() - 100.0
+
+    hangup_calls: list[dict] = []
+    session.schedule_hangup = lambda *a, **k: hangup_calls.append(k)  # type: ignore[assignment]
+
+    task = asyncio.create_task(session._idle_watchdog())
+    try:
+        ok = await _wait(lambda: len(hangup_calls) >= 1, timeout=4.0)
+    finally:
+        await _cancel(task)
+
+    assert ok, "harus mengakhiri panggilan bila tetap tidak ada respons"
+    # Konfirmasi lalu pamitan terkirim sebelum menutup.
+    assert len(live.prompts) >= 2
+    assert hangup_calls[0].get("min_wait", 0) > 0
+
+
+def test_note_caller_activity_mereset_status(settings):
+    session = make_session(settings=settings, live=FakeLiveSession())
+    session._idle_prompted = True
+    session._note_caller_activity()
+    assert session._idle_prompted is False
+
+
+async def test_transcript_penelpon_mereset_idle(settings):
+    live = FakeLiveSession([TranscriptIn("halo, masih ada")])
+    session = make_session(settings=settings, live=live)
+    session._live = live
+    session.state = SessionState.ACTIVE
+    session.is_greeting = False
+    session._last_caller_activity = 0.0
+
+    task = asyncio.create_task(session._gemini_receiver_worker())
+    try:
+        ok = await _wait(lambda: session._last_caller_activity > 0.0)
+    finally:
+        await _cancel(task)
+
+    assert ok, "ucapan penelpon harus mereset timer diam"
 
 
 async def test_batas_durasi_panggilan_memicu_hangup(settings):

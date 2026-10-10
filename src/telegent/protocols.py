@@ -26,6 +26,9 @@ class LiveVoiceSession(Protocol):
     async def send_greeting(self, prompt: str) -> None:
         ...
 
+    async def send_prompt(self, text: str) -> None:
+        ...
+
     async def send_tool_response(self, responses: Sequence[ToolResponse]) -> None:
         ...
 

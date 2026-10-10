@@ -16,3 +16,16 @@ DEFAULT_SYSTEM_INSTRUCTION = (
 DEFAULT_GREETING_PROMPT = (
     "Sapa penelpon dengan ramah dan singkat: 'Halo, dengan siapa saya berbicara? Ada yang bisa dibantu?'"
 )
+
+# Diinjeksi ke model ketika penelpon diam cukup lama (indikasi tidak menjawab).
+DEFAULT_IDLE_PROMPT = (
+    "Sistem: penelpon sudah beberapa saat tidak menjawab. Tanyakan dengan singkat dan ramah "
+    "apakah masih ada di sana atau butuh bantuan lain."
+)
+
+# Diinjeksi ketika penelpon tetap tidak merespons setelah konfirmasi.
+DEFAULT_IDLE_FAREWELL = (
+    "Sistem: penelpon tetap tidak menjawab. Ucapkan pamitan singkat dan sopan, "
+    "lalu akhiri panggilan."
+)
+
