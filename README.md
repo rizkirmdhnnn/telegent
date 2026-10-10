@@ -142,6 +142,16 @@ pyproject.toml
 
 ---
 
+## Troubleshooting
+
+- **Crash `SIGABRT` / "Abort trap: 6" saat program dimatikan (macOS).**
+  Berasal dari destruktor statis `ntgcalls` (WebRTC C++) yang berjalan saat
+  interpreter Python keluar (`__cxa_finalize`). Telegent sudah keluar lewat
+  `os._exit()` untuk melewatinya — lihat `telegent/__main__.py::_exit_cleanly`.
+  Ini normal dan tidak memengaruhi fungsionalitas.
+
+---
+
 ## Lisensi & Komponen
 
 - `ntgcalls`: LGPL/GPL · `pyrogram`: LGPLv3 · `google-genai`: Apache-2.0.

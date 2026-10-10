@@ -122,7 +122,7 @@ class TelegentApp:
             for frame in frames:
                 if frame.data:
                     raw.extend(frame.data)
-            if raw:
+            if raw and not loop.is_closed():
                 loop.call_soon_threadsafe(session.handle_incoming_telegram_pcm, bytes(raw))
 
         ntg.on_signaling_data(on_signaling_data)

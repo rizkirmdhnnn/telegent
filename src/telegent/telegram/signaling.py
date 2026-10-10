@@ -87,7 +87,7 @@ class SignalingService:
                 return
 
     def dispatch(self, session: Any, data: bytes) -> None:
-        if self._loop is None:
+        if self._loop is None or self._loop.is_closed():
             return
         asyncio.run_coroutine_threadsafe(self._send(session, data), self._loop)
 
