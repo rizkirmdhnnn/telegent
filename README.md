@@ -134,10 +134,11 @@ uv run pyright src/telegent      # type checking
 ```
 src/telegent/               # paket utama
 tests/                      # unit + integration test (fake)
-scripts/                    # PoC/manual check lama (gemini_poc, telegram_voip, call_debugger)
+scripts/                    # utilitas manual (call_debugger, gemini_live_check)
 docs/                       # dokumentasi
+.github/workflows/ci.yml    # CI (uv + pytest + pyright)
 Dockerfile, docker-compose.yml
-pyproject.toml
+pyproject.toml, uv.lock
 ```
 
 ---
@@ -152,6 +153,8 @@ pyproject.toml
 
 ---
 
-## Lisensi & Komponen
+## Lisensi
 
-- `ntgcalls`: LGPL/GPL · `pyrogram`: LGPLv3 · `google-genai`: Apache-2.0.
+Kode proyek ini dilisensikan di bawah **MIT** — lihat [`LICENSE`](LICENSE).
+
+Komponen pihak ketiga: `ntgcalls` (LGPL/GPL) · `pyrogram` (LGPLv3) · `google-genai` (Apache-2.0).
