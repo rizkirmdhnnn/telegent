@@ -49,11 +49,11 @@ def load_or_create_key(data_dir: Path, env_key: str | None = None) -> bytes:
     return key
 
 
-def mask(value: str | None, *, keep: int = 4) -> str | None:
+def mask(value: object | None, *, keep: int = 4) -> str | None:
     """Tampilkan sebagian nilai untuk UI/audit tanpa membocorkan isi penuh."""
     if value is None:
         return None
-    stripped = value.strip()
+    stripped = str(value).strip()
     if not stripped:
         return ""
     if len(stripped) <= keep * 2:

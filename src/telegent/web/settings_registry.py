@@ -255,7 +255,6 @@ def _specs() -> tuple[SettingSpec, ...]:
             apply=ApplyMode.RESTART,
             default=0,
             minimum=1,
-            secret=True,
         ),
         SettingSpec(
             key="telegram_api_hash",

@@ -28,24 +28,6 @@ _EXPECTED_TABLES = {
 }
 
 
-@pytest.fixture
-def db_url(tmp_path: Path) -> str:
-    return f"sqlite+aiosqlite:///{(tmp_path / 'unit.db').as_posix()}"
-
-
-@pytest.fixture
-async def database(db_url: str):
-    """Database ter-migrasi; dibersihkan otomatis."""
-    from telegent.web.db.migrate import upgrade_to_head_async
-
-    await upgrade_to_head_async(db_url)
-    db = Database(db_url)
-    try:
-        yield db
-    finally:
-        await db.dispose()
-
-
 # --------------------------------------------------------------- migrasi & skema
 
 

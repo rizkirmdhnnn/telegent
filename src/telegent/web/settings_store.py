@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from telegent.config import Settings
+from telegent.web.audit import AuditEntry, record_many
 from telegent.web.crypto import SecretCipher, mask
 from telegent.web.db import models
 from telegent.web.db.base import Database
@@ -136,7 +137,13 @@ class SettingsStore:
         row.encrypted = encrypted
         row.updated_by = actor
 
-    async def update(self, changes: dict[str, Any], actor: str = SYSTEM_ACTOR) -> UpdateResult:
+    async def update(
+        self,
+        changes: dict[str, Any],
+        actor: str = SYSTEM_ACTOR,
+        *,
+        ip: str | None = None,
+    ) -> UpdateResult:
         """Simpan perubahan setting (validasi penuh sebelum menulis)."""
         errors: list[SettingValidationError] = []
         prepared: dict[str, Any] = {}
@@ -153,9 +160,26 @@ class SettingsStore:
         if errors:
             raise SettingsValidationError(errors)
 
+        before = {key: await self.get(key) for key in prepared}
+
         async with self._db.session() as session:
             for key, value in prepared.items():
                 await self._upsert(session, key, value, actor)
+
+        await record_many(
+            self._db,
+            [
+                AuditEntry(
+                    action="setting.update",
+                    actor=actor,
+                    target=key,
+                    before=before[key],
+                    after=prepared[key],
+                    ip=ip,
+                )
+                for key in prepared
+            ],
+        )
 
         log.info("Setting diperbarui oleh %s: %s", actor, ", ".join(sorted(prepared)))
         return UpdateResult(

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
-from typing import Iterator
 
 import pyotp
 import pytest
 from fastapi.testclient import TestClient
+from web_helpers import csrf_of, do_login, do_setup
 from sqlalchemy import select
 
 from telegent.web.bootstrap import BootstrapConfig
@@ -31,37 +31,9 @@ from telegent.web.security import (
 PASSWORD = "rahasia-kuat-123"
 
 
-# ------------------------------------------------------------------- helper
-
-
-def csrf_of(client: TestClient) -> str:
-    token = client.cookies.get(CSRF_COOKIE)
-    assert token, "cookie CSRF belum dipasang"
-    return token
-
-
-def do_setup(client: TestClient, username: str = "admin", password: str = PASSWORD) -> None:
-    resp = client.post("/api/setup/admin", json={"username": username, "password": password})
-    assert resp.status_code == 200, resp.text
-
-
-def do_login(client: TestClient, username: str = "admin", password: str = PASSWORD, **extra):
-    return client.post(
-        "/api/auth/login", json={"username": username, "password": password, **extra}
-    )
-
-
-@pytest.fixture
-def live_client(bootstrap: BootstrapConfig) -> Iterator[TestClient]:
-    """Client dengan lifespan aktif (database & store siap)."""
-    from telegent.web.app import create_app
-
-    with TestClient(create_app(bootstrap)) as client:
-        yield client
-
-
 @pytest.fixture
 def prepared(live_client: TestClient) -> TestClient:
+    """Client yang sudah punya admin tapi belum login."""
     do_setup(live_client)
     live_client.post("/api/auth/logout")
     return live_client
@@ -355,12 +327,10 @@ def test_lockout_menggunakan_konstanta_yang_teruji() -> None:
 def test_sanitasi_cookie_httponly_lengkap(live_client: TestClient) -> None:
     """Pastikan header Set-Cookie sesi menandai HttpOnly (dicek lewat respons)."""
     do_setup(live_client)
-    resp = live_client.post(
-        "/api/auth/login", json={"username": "admin", "password": PASSWORD}
-    )
+    resp = do_login(live_client)
     headers = resp.headers.get_list("set-cookie")
     session_cookie = next(h for h in headers if h.startswith(f"{SESSION_COOKIE}="))
     csrf_cookie = next(h for h in headers if h.startswith(f"{CSRF_COOKIE}="))
     assert "HttpOnly" in session_cookie
     assert "HttpOnly" not in csrf_cookie
-    assert "SameSite=lax" in session_cookie.replace("samesite", "SameSite")
+    assert "samesite=lax" in session_cookie.lower()

@@ -85,7 +85,7 @@ def test_registry_terkelompok_dan_ada_default_penanda() -> None:
 
 def test_secret_hanya_untuk_nilai_kredensial() -> None:
     secrets = {key for key, spec in REGISTRY.items() if spec.secret}
-    assert secrets == {"telegram_api_id", "telegram_api_hash", "gemini_api_key"}
+    assert secrets == {"telegram_api_hash", "gemini_api_key"}
 
 
 # ------------------------------------------------------------------ coercion
@@ -276,8 +276,7 @@ async def test_import_env_legacy_satu_kali(
         "MAX_CONCURRENT_CALLS=7\n"
         "SYSTEM_INSTRUCTION=Saya asisten Tes.\n"
     )
-    env_file = tmp_path / ".env.legacy"
-    env_file.write_text(legacy_env, encoding="utf-8")
+    (tmp_path / ".env").write_text(legacy_env, encoding="utf-8")
 
     for key in ("TELEGRAM_API_ID", "TELEGRAM_API_HASH", "GEMINI_API_KEY", "MAX_CONCURRENT_CALLS"):
         monkeypatch.delenv(key, raising=False)
