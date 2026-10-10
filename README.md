@@ -86,6 +86,9 @@ Catatan:
 | `GEMINI_MODEL` | `gemini-3.1-flash-live-preview` | Model Live API |
 | `ALLOWED_USER_IDS` | *(kosong = semua)* | Whitelist ID Telegram, pisah koma |
 | `MAX_CONCURRENT_CALLS` | `4` | Batas panggilan bersamaan |
+| `MAX_CALL_DURATION` | `600` | Durasi maksimum 1 panggilan (detik); `0` = tanpa batas |
+| `MAX_CALLS_PER_WINDOW` | `5` | Rate-limit: maksimum panggilan per pengguna dalam satu jendela; `0` = tanpa batas |
+| `CALL_WINDOW_SECONDS` | `60` | Panjang jendela rate-limit (detik) |
 | `LOG_LEVEL` | `INFO` | Level logging |
 | `SYSTEM_INSTRUCTION` / `GREETING_PROMPT` | *(default di kode)* | Persona & sapaan |
 

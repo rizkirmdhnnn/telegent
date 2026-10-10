@@ -19,6 +19,7 @@ from telegent.ai.tools.builtin import default_tools
 from telegent.ai.tools.registry import ToolRegistry
 from telegent.config import Settings
 from telegent.logging_setup import call_logger, get_logger
+from telegent.rate_limit import CallRateLimiter
 from telegent.telegram.call_session import CallSession, SessionState
 from telegent.telegram.media import NtgAudioSink, external_audio_media
 from telegent.telegram.signaling import SignalingService, to_ntg_rtc_server, to_tg_protocol
@@ -38,6 +39,9 @@ class TelegentApp:
         for spec in default_tools():
             self.tools.register(spec)
         self.sessions: dict[int, CallSession] = {}
+        self.rate_limiter = CallRateLimiter(
+            settings.max_calls_per_window, settings.call_window_seconds
+        )
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self._stop = asyncio.Event()
 
@@ -199,6 +203,15 @@ class TelegentApp:
         allowed = self.settings.allowed_user_id_set
         if allowed and user_id not in allowed:
             log.warning("Ditolak: user tidak ada di whitelist.")
+            await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
+            return
+
+        if not self.rate_limiter.allow(user_id):
+            log.warning(
+                "Ditolak: rate-limit terlampaui (%d panggilan / %.0f dtk).",
+                self.settings.max_calls_per_window,
+                self.settings.call_window_seconds,
+            )
             await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
             return
 

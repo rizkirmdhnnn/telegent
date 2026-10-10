@@ -63,6 +63,7 @@ menangani shutdown (SIGINT/SIGTERM).
 | Audio tersendat | Cadence 10 ms tetap + pengisian senyap; antrean besar, tanpa buang frame |
 | `CALL_NOT_ACTIVE` | Tahan data signaling sampai call aktif, lalu flush; retry singkat |
 | Banyak panggilan | Semua state per-`CallSession`; `ntgcalls` callback dispatch per `user_id` |
+| Anti-penyalahgunaan | Whitelist + `MAX_CONCURRENT_CALLS` + rate-limit per pengguna (`rate_limit.CallRateLimiter`) + `MAX_CALL_DURATION` (watchdog di `CallSession`) |
 | Testability | Seam `AudioSink` / `LiveVoiceSession` + fake di `tests/helpers.py` |
 
 ## Threading

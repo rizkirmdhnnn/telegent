@@ -143,3 +143,32 @@ async def test_schedule_hangup_idempoten(settings):
     assert session._hangup_task is first
 
     await session.close()
+
+
+async def test_batas_durasi_panggilan_memicu_hangup(settings):
+    settings.max_call_duration = 0.1
+    session = make_session(settings=settings, live=FakeLiveSession())
+    session.state = SessionState.ACTIVE
+
+    fired = asyncio.Event()
+
+    async def on_hangup() -> None:
+        fired.set()
+
+    session.on_hangup = on_hangup
+
+    await asyncio.wait_for(session._enforce_max_duration(), timeout=2.0)
+    await asyncio.wait_for(fired.wait(), timeout=3.0)
+    assert fired.is_set()
+
+    await session.close()
+
+
+async def test_batas_durasi_nol_tidak_memicu_hangup(settings):
+    settings.max_call_duration = 0
+    session = make_session(settings=settings, live=FakeLiveSession())
+    session.state = SessionState.ACTIVE
+
+    # Tanpa batas: task langsung selesai tanpa menjadwalkan hangup.
+    await asyncio.wait_for(session._enforce_max_duration(), timeout=1.0)
+    assert session._hangup_task is None

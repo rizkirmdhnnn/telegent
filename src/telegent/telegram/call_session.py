@@ -158,6 +158,7 @@ class CallSession:
                 self._tasks.append(asyncio.create_task(self._gemini_receiver_worker()))
                 self._tasks.append(asyncio.create_task(self._telegram_audio_sender_worker()))
                 self._tasks.append(asyncio.create_task(self._auto_clear_greeting()))
+                self._tasks.append(asyncio.create_task(self._enforce_max_duration()))
 
                 await self._ending.wait()
         except asyncio.CancelledError:
@@ -170,6 +171,19 @@ class CallSession:
     async def _auto_clear_greeting(self) -> None:
         await asyncio.sleep(4.0)
         self.finish_greeting()
+
+    async def _enforce_max_duration(self) -> None:
+        """Akhiri panggilan secara paksa setelah `max_call_duration` detik."""
+        limit = self._settings.max_call_duration
+        if limit <= 0:
+            return
+        try:
+            await asyncio.sleep(limit)
+        except asyncio.CancelledError:
+            return
+        if self.state == SessionState.ACTIVE and not self._closing:
+            self._log.warning("Batas durasi panggilan (%.0f dtk) tercapai.", limit)
+            self.schedule_hangup()
 
     async def close(self) -> None:
         """Tutup sesi (idempoten)."""
