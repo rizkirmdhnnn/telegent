@@ -102,14 +102,10 @@ class TelegentApp:
             return
 
         def on_signaling_data(user_id: int, data: bytes) -> None:
-            session = self.sessions.get(user_id)
-            if session is None:
-                return
-            if not session.signaling_ready:
-                if len(session.pending_signaling) < 512:
-                    session.pending_signaling.append(data)
-                return
-            signaling.dispatch(session, data)
+            # Callback native (thread ntgcalls): hanya dispatch ke loop utama,
+            # jangan sentuh state sesi dari thread ini.
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(self._on_signaling_data, user_id, data)
 
         def on_connection_change(user_id: int, info: ntgcalls.ConnectionInfo) -> None:
             state_name = str(info.state).split(".")[-1]
@@ -119,19 +115,32 @@ class TelegentApp:
         def on_frames(user_id: int, mode, _device, frames) -> None:
             if mode != ntgcalls.StreamMode.PLAYBACK:
                 return
-            session = self.sessions.get(user_id)
-            if session is None:
-                return
             raw = bytearray()
             for frame in frames:
                 if frame.data:
                     raw.extend(frame.data)
             if raw and not loop.is_closed():
-                loop.call_soon_threadsafe(session.handle_incoming_telegram_pcm, bytes(raw))
+                loop.call_soon_threadsafe(self._deliver_incoming_pcm, user_id, bytes(raw))
 
         ntg.on_signaling_data(on_signaling_data)
         ntg.on_connection_change(on_connection_change)
         ntg.on_frames(on_frames)
+
+    # --- Handler yang berjalan di event loop utama (state sesi aman) ---
+    def _on_signaling_data(self, user_id: int, data: bytes) -> None:
+        session = self.sessions.get(user_id)
+        if session is None or self.signaling is None:
+            return
+        if not session.signaling_ready:
+            if len(session.pending_signaling) < 512:
+                session.pending_signaling.append(data)
+            return
+        self.signaling.dispatch(session, data)
+
+    def _deliver_incoming_pcm(self, user_id: int, raw: bytes) -> None:
+        session = self.sessions.get(user_id)
+        if session is not None:
+            session.handle_incoming_telegram_pcm(raw)
 
     def _setup_handlers(self) -> None:
         assert self.app is not None
@@ -215,6 +224,13 @@ class TelegentApp:
             await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
             return
 
+        if user_id in self.sessions:
+            # Panggilan ganda dari user yang sama (mis. update terduplikasi):
+            # tolak yang baru agar sesi lama tidak tertimpa/bocor.
+            log.warning("Ditolak: sudah ada sesi aktif untuk user ini.")
+            await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
+            return
+
         if len(self.sessions) >= self.settings.max_concurrent_calls:
             log.warning("Ditolak: kapasitas penuh (%d sesi).", len(self.sessions))
             await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
@@ -258,6 +274,15 @@ class TelegentApp:
         session = self.sessions.get(user_id) or self._session_by_call_id(call.id)
         if session is None:
             self._log.warning("Sesi untuk call id %s tidak ditemukan.", call.id)
+            return
+
+        if session.state != SessionState.INCOMING_CALL:
+            # Update PhoneCall terduplikasi/terlambat: jangan setup media dua kali.
+            self._log.warning(
+                "PhoneCall untuk user %s diabaikan (state=%s).",
+                session.user_id,
+                session.state.value,
+            )
             return
 
         log = call_logger(session.user_id, session.call_id)

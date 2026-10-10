@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from telegent.ai.prompt import DEFAULT_GREETING_PROMPT, DEFAULT_SYSTEM_INSTRUCTION
@@ -66,6 +66,23 @@ class Settings(BaseSettings):
     tg_frame_ms: int = 10
     gemini_input_rate: int = 16000
     gemini_output_rate: int = 24000
+
+    @field_validator("allowed_user_ids")
+    @classmethod
+    def _validate_allowed_user_ids(cls, value: str) -> str:
+        """Pastikan setiap ID valid saat load (fail-fast, bukan crash saat panggilan)."""
+        for part in value.replace(";", ",").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                int(part)
+            except ValueError:
+                raise ValueError(
+                    f"ID Telegram tidak valid: {part!r} "
+                    "(harus bilangan bulat, dipisah koma/titik-koma)"
+                ) from None
+        return value
 
     @property
     def allowed_user_id_set(self) -> set[int]:

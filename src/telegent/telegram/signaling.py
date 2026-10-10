@@ -87,9 +87,20 @@ class SignalingService:
                 return
 
     def dispatch(self, session: Any, data: bytes) -> None:
+        """Jadwalkan pengiriman signaling.
+
+        Aman dipanggil dari thread native ntgcalls maupun dari event loop utama.
+        """
         if self._loop is None or self._loop.is_closed():
             return
-        asyncio.run_coroutine_threadsafe(self._send(session, data), self._loop)
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is self._loop:
+            self._loop.create_task(self._send(session, data))
+        else:
+            asyncio.run_coroutine_threadsafe(self._send(session, data), self._loop)
 
     def flush_pending(self, session: Any) -> None:
         if not session.pending_signaling:

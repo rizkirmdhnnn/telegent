@@ -21,6 +21,15 @@ def test_allowed_user_ids_parsing():
     assert settings.allowed_user_id_set == {1, 2, 3, 4}
 
 
+def test_allowed_user_ids_tidak_valid_gagal_saat_load():
+    """B2: ID tidak valid harus ditolak saat load, bukan saat panggilan masuk."""
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        _settings(allowed_user_ids="abc,123")
+
+
 def test_allowed_user_ids_kosong():
     assert _settings().allowed_user_id_set == set()
 
