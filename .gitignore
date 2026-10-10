@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.session
+*.session-journal
+*.wav
+*.raw
+.DS_Store
+
+# Runtime Docker (volume sesi & data)
+/data/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.pyright/
+
