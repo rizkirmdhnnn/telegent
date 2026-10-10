@@ -1,77 +1,145 @@
-# Telegent: Telegram Voice Call + Google Gemini Live API
+# Telegent
 
-Proof of Concept (PoC) AI Voice Agent real-time dua arah yang memungkinkan pengguna menelepon akun Telegram selayaknya menelepon teman, dijawab langsung oleh AI dengan suara bahasa Indonesia secara interaktif.
+AI voice agent real-time: pengguna menelepon akun Telegram (panggilan privat 1-on-1),
+dijawab otomatis oleh AI dengan suara bahasa Indonesia, mendukung **tool calling**.
 
----
-
-## 1. Arsitektur Teknis
-
-- **MTProto Signaling:** `pyrogram` + `tgcrypto` (menerima panggilan privat 1-on-1 via `functions.phone.AcceptCall`, Diffie-Hellman handshake, dan ICE relay).
-- **VoIP Media Transport:** `ntgcalls` (Native C++ WebRTC P2P media engine; mengirim dan menerima frame PCM 48 kHz mono 16-bit).
-- **AI Voice Engine:** Google Gemini Live API (`google-genai` SDK via WebSocket streaming).
-- **Audio Resampling:** `scipy.signal.resample_poly` (48 kHz $\leftrightarrow$ 16 kHz & 24 kHz, $<1$ ms latensi).
+Dibangun di atas `pyrogram` (signaling MTProto) + `ntgcalls` (media WebRTC) +
+**Google Gemini Live API** (`google-genai`).
 
 ---
 
-## 2. Struktur Proyek
+## Arsitektur
 
-```
-telegent/
-├── docs/
-│   ├── feasibility.md              # Riset kelayakan teknis (Fase 0)
-│   ├── gemini-poc-results.md        # Hasil pengujian lokal Gemini Live (Fase 1)
-│   └── telegram-voip-poc-results.md # Hasil pengujian VoIP Telegram (Fase 2)
-├── src/
-│   ├── audio_resampler.py          # Modul downsampling & upsampling audio
-│   ├── gemini_poc.py               # PoC lokal Gemini Live (Mic/Speaker/File)
-│   ├── telegram_voip.py            # PoC Telegram VoIP (Loopback & Test Tone)
-│   └── main.py                     # Sistem terintegrasi Telegent
-├── tests/
-│   ├── generate_test_audio.py      # Generator berkas audio WAV sintetis
-│   └── test_resampler.py           # Unit test resampling audio
-├── requirements.txt                # Daftar dependensi Python
-├── .env.example                    # Template environment variables
-└── pyrightconfig.json
-```
+| Lapisan | Modul | Peran |
+|---|---|---|
+| Konfigurasi | `telegent.config` | `Settings` tervalidasi dari env/.env |
+| Audio | `telegent.audio.{resampler,framing,cadence}` | Resampling, framing 10 ms, pacing cadence-stabil |
+| Telegram | `telegent.telegram.{signaling,media,call_session}` | Signaling panggilan, media ntgcalls, state machine per panggilan |
+| AI | `telegent.ai.{live_session,prompt,events}` | Sesi Gemini Live + event netral |
+| Tool | `telegent.ai.tools.{spec,registry,builtin}` | Deklarasi + eksekusi tool |
+| Orkestrasi | `telegent.app` | Klien Telegram, dispatch panggilan, batas konkurensi |
+
+Prinsip:
+- **Banyak panggilan bersamaan** — semua state bersifat per-`CallSession` (tidak ada global mutable).
+- **Seam untuk testability** — `protocols.AudioSink` dan `protocols.LiveVoiceSession`
+  memungkinkan komponen inti diuji dengan fake tanpa jaringan/native.
+- **Audio mulus** — frame dikirim pada cadence tetap 10 ms; saat tidak ada audio AI,
+  dikirim frame senyap (mencegah jitter-buffer underrun).
+
+Detail lebih lanjut: [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
-## 3. Cara Penggunaan
-
-### Persiapan Lingkungan
+## Setup Lokal
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-# Edit .env dengan API ID, API Hash Telegram, dan GEMINI_API_KEY
+pip install -e ".[dev]"          # atau: pip install -e .
+cp .env.example .env             # isi TELEGRAM_API_ID/HASH & GEMINI_API_KEY
 ```
 
-### Fase 1 — PoC Gemini Live API Lokal
+Jalankan:
 
 ```bash
-# Mode mikrofon dan speaker langsung
-python3 src/gemini_poc.py --mode mic
-
-# Mode simulasi file (tanpa mic)
-python3 tests/generate_test_audio.py
-python3 src/gemini_poc.py --mode file --input tests/test_input_16k.wav --output tests/gemini_response.wav
+python -m telegent               # atau: telegent
 ```
 
-### Fase 2 — PoC Telegram VoIP Tanpa AI
+Saat pertama kali, Pyrogram meminta nomor telepon & kode OTP secara interaktif di terminal.
+Telepon akun Telegram tersebut untuk menguji percakapan.
+
+---
+
+## Setup Docker
+
+Login Telegram **sekali** (interaktif) agar file sesi tersimpan di volume `./data`:
 
 ```bash
-# Mode Loopback (suara penelpon dipantulkan kembali)
-python3 src/telegram_voip.py --api-id <API_ID> --api-hash <API_HASH> --mode loopback
-
-# Mode Test Tone (mengirimkan nada 440 Hz)
-python3 src/telegram_voip.py --api-id <API_ID> --api-hash <API_HASH> --mode test_tone
+mkdir -p data
+docker compose run --rm telegent        # ikuti prompt login sekali
 ```
 
-### Fase 3 — Telegent Terintegrasi (Telegram + Gemini)
+Setelah sesi ada, jalankan sebagai service:
 
 ```bash
-python3 src/main.py --api-id <API_ID> --api-hash <API_HASH> --gemini-api-key <GEMINI_API_KEY>
+docker compose up -d
+docker compose logs -f
 ```
-Saat pertama kali dijalankan, Pyrogram akan meminta nomor telepon dan kode OTP Telegram secara interaktif di terminal. Setelah login, telepon akun Telegram tersebut untuk menguji percakapan suara AI langsung.
+
+Catatan:
+- File `*.session` disimpan di volume `./data` (bertahan antar restart).
+- Panggilan P2P butuh UDP keluar; mode bridge umumnya cukup. Bila media tidak
+  tersambung, aktifkan `network_mode: host` di `docker-compose.yml`.
+
+---
+
+## Konfigurasi (`.env`)
+
+| Variabel | Default | Keterangan |
+|---|---|---|
+| `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` | — | Wajib (dari my.telegram.org) |
+| `GEMINI_API_KEY` | — | Wajib (Google AI Studio) |
+| `TELEGRAM_SESSION_NAME` | `userbot_session` | Nama file sesi (tanpa `.session`) |
+| `TELEGRAM_SESSION_DIR` | `.` | Direktori sesi (`/data` di Docker) |
+| `GEMINI_MODEL` | `gemini-3.1-flash-live-preview` | Model Live API |
+| `ALLOWED_USER_IDS` | *(kosong = semua)* | Whitelist ID Telegram, pisah koma |
+| `MAX_CONCURRENT_CALLS` | `4` | Batas panggilan bersamaan |
+| `LOG_LEVEL` | `INFO` | Level logging |
+| `SYSTEM_INSTRUCTION` / `GREETING_PROMPT` | *(default di kode)* | Persona & sapaan |
+
+CLI opsional: `--allow-user <id>` (boleh berulang), `--log-level`.
+
+---
+
+## Tool Calling
+
+Tool didaftarkan di `telegent.app.TelegentApp` (lihat `ai/tools/builtin.py`).
+Tool bawaan saat ini: `get_current_datetime`.
+
+Menambah tool baru:
+
+```python
+from telegent.ai.tools.spec import ToolSpec, ToolContext
+
+async def handler(ctx: ToolContext, args: dict) -> dict:
+    return {"output": {...}}          # atau {"error": "..."} bila gagal
+
+spec = ToolSpec(
+    name="nama_tool",
+    description="Dijelaskan ke model untuk memutuskan kapan memanggilnya.",
+    parameters_json_schema={"type": "object", "properties": {...}},
+    handler=handler,
+    timeout=5.0,
+    behavior="BLOCKING",              # atau "NON_BLOCKING"
+)
+```
+
+Panduan lengkap: [`docs/tools.md`](docs/tools.md).
+
+---
+
+## Testing
+
+```bash
+pytest -q                 # unit + integration (dengan fake, tanpa jaringan)
+pyright src/telegent      # type checking
+```
+
+---
+
+## Struktur Proyek
+
+```
+src/telegent/               # paket utama
+tests/                      # unit + integration test (fake)
+scripts/                    # PoC/manual check lama (gemini_poc, telegram_voip, call_debugger)
+docs/                       # dokumentasi
+Dockerfile, docker-compose.yml
+pyproject.toml
+```
+
+---
+
+## Lisensi & Komponen
+
+- `ntgcalls`: LGPL/GPL · `pyrogram`: LGPLv3 · `google-genai`: Apache-2.0.

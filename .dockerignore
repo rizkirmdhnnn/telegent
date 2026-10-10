@@ -1,0 +1,16 @@
+.venv/
+.git/
+.gitignore
+data/
+*.session
+*.session-journal
+*.wav
+*.raw
+__pycache__/
+*.pyc
+.env
+docs/
+scripts/
+tests/
+.pytest_cache/
+.pyright/

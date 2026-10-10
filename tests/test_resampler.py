@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""
-Unit test untuk audio_resampler.
-"""
-import unittest
-import sys
-from pathlib import Path
+"""Unit test untuk modul resampling audio."""
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from __future__ import annotations
+
+import unittest
 
 import numpy as np
-from src.audio_resampler import pcm48k_to_pcm16k, pcm24k_to_pcm48k
+
+from telegent.audio.resampler import pcm24k_to_pcm48k, pcm48k_to_pcm16k
 
 
 class TestAudioResampler(unittest.TestCase):

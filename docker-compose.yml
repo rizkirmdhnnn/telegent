@@ -1,0 +1,16 @@
+services:
+  telegent:
+    build: .
+    image: telegent:latest
+    env_file: .env
+    environment:
+      TELEGRAM_SESSION_DIR: /data
+    volumes:
+      # Menyimpan file *.session agar login Telegram bertahan antar restart.
+      - ./data:/data
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    # Panggilan P2P Telegram butuh UDP keluar. Mode bridge umumnya cukup
+    # (relay/reflector Telegram). Bila media tidak tersambung, aktifkan host:
+    # network_mode: host
