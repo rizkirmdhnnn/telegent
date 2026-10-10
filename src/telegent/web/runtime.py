@@ -16,6 +16,8 @@ from typing import Any, Awaitable, Callable, Optional
 
 from telegent.app import EventSink, TelegentApp
 from telegent.config import Settings
+from telegent.protocols import CallObserver
+from telegent.telegram.call_session import CallSession
 from telegent.web.db.base import utcnow
 from telegent.web.settings_registry import REGISTRY, ApplyMode
 from telegent.web.settings_store import NotConfigured, SettingsStore
@@ -73,6 +75,7 @@ class RuntimeController:
         event_sink: EventSink | None = None,
         session_dir: Path | None = None,
         tool_config_provider: ToolConfigProvider | None = None,
+        call_observer: CallObserver | None = None,
     ) -> None:
         self._store = store
         self._tool_config_provider = tool_config_provider
@@ -83,6 +86,7 @@ class RuntimeController:
                 install_signal_handlers=False,
                 event_sink=event_sink,
                 tool_configs=self._tool_configs,
+                call_observer=call_observer,
             )
         )
         self._session_dir = session_dir
@@ -113,6 +117,38 @@ class RuntimeController:
     def tool_configs(self) -> dict[str, dict[str, Any]]:
         """Konfigurasi tool yang akan dipakai saat bot dijalankan."""
         return dict(self._tool_configs)
+
+    # ----------------------------------------------------------------- panggilan
+
+    def active_sessions(self) -> list[CallSession]:
+        """Sesi panggilan yang sedang berjalan; kosong saat bot tidak hidup.
+
+        Bot yang berhenti tidak punya sesi: endpoint pemantauan mengembalikan
+        daftar kosong, bukan galat.
+        """
+        if self._app is None:
+            return []
+        return self._app.active_sessions()
+
+    def find_session_by_call_id(self, tg_call_id: int) -> CallSession | None:
+        """Sesi aktif dengan `tg_call_id` tertentu (atau `None`)."""
+        return next(
+            (s for s in self.active_sessions() if s.call_id == tg_call_id),
+            None,
+        )
+
+    def find_session_by_record_id(
+        self, record_id: int, lookup: Callable[[int], int | None]
+    ) -> CallSession | None:
+        """Sesi aktif untuk satu `call_record` id.
+
+        `lookup` memetakan id record → `tg_call_id`; di-inject agar controller
+        tidak perlu tahu-menahu soal database.
+        """
+        tg_call_id = lookup(record_id)
+        if tg_call_id is None:
+            return None
+        return self.find_session_by_call_id(tg_call_id)
 
     # ------------------------------------------------------------------ status
 

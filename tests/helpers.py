@@ -57,6 +57,7 @@ def make_session(
     live: FakeLiveSession,
     sink: FakeSink | None = None,
     tools: ToolRegistry | None = None,
+    on_event=None,
 ) -> CallSession:
     @asynccontextmanager
     async def factory():
@@ -71,4 +72,5 @@ def make_session(
         tools=tools or ToolRegistry(),
         settings=settings,
         logger=logging.getLogger("test"),
+        on_event=on_event,
     )

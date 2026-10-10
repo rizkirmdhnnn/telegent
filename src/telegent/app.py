@@ -19,6 +19,7 @@ from telegent.ai.tools.builtin import default_tools
 from telegent.ai.tools.registry import ToolRegistry
 from telegent.config import Settings
 from telegent.logging_setup import call_logger, get_logger
+from telegent.protocols import CallObserver
 from telegent.rate_limit import CallRateLimiter
 from telegent.telegram.call_session import CallSession, SessionState
 from telegent.telegram.media import NtgAudioSink, external_audio_media
@@ -38,6 +39,7 @@ class TelegentApp:
         install_signal_handlers: bool = True,
         event_sink: Optional[EventSink] = None,
         tool_configs: Optional[dict[str, dict]] = None,
+        call_observer: Optional[CallObserver] = None,
     ) -> None:
         self.settings = settings
         self._log = get_logger("telegent.app")
@@ -59,6 +61,7 @@ class TelegentApp:
         self._stop = asyncio.Event()
         self._install_signal_handlers_on_start = install_signal_handlers
         self._event_sink = event_sink
+        self._call_observer = call_observer
         self._started = False
 
     # -------------------------------------------------------------- properties
@@ -71,6 +74,14 @@ class TelegentApp:
     @property
     def active_call_count(self) -> int:
         return len(self.sessions)
+
+    def active_sessions(self) -> list["CallSession"]:
+        """Sesi panggilan yang sedang berjalan (untuk panel pemantau).
+
+        Salinan daftar, bukan objek sesi itu sendiri: pemanggil di luar loop
+        hanya boleh membaca, bukan mengubah state sesi.
+        """
+        return list(self.sessions.values())
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -102,6 +113,20 @@ class TelegentApp:
             self._event_sink(event, payload)
         except Exception:  # noqa: BLE001 - pemantau tidak boleh mengganggu bot
             self._log.debug("Gagal menerbitkan event '%s'.", event, exc_info=True)
+
+    def _observe_call(self, method: str, tg_call_id: int, user_id: int, **kwargs: object) -> None:
+        """Teruskan siklus hidup panggilan ke `CallObserver` (penyimpan E1).
+
+        Implementasi pemantau wajib sinkron & non-memblokir; galat ditelan
+        agar kegagalan penyimpanan tidak pernah menjatuhkan panggilan.
+        """
+        observer = self._call_observer
+        if observer is None:
+            return
+        try:
+            getattr(observer, method)(tg_call_id, user_id, **kwargs)
+        except Exception:  # noqa: BLE001 - kegagalan monitor tidak boleh mengganggu bot
+            self._log.debug("Gagal notifying observer '%s'.", method, exc_info=True)
 
     async def start(self) -> None:
         """Bangun klien dan mulai menerima panggilan.
@@ -319,14 +344,14 @@ class TelegentApp:
         log = call_logger(user_id, call.id)
         log.info("Panggilan masuk dari user %s.", user_id)
 
+        # Q12: record dibuat saat panggilan MASUK, sehingga penolakan pun tercatat.
+        self._emit("call.incoming", {"tg_call_id": call.id, "user_id": user_id})
+        self._observe_call("call_incoming", call.id, user_id)
+
         allowed = self.settings.allowed_user_id_set
         if allowed and user_id not in allowed:
             log.warning("Ditolak: user tidak ada di whitelist.")
-            self._emit(
-                "call.ended",
-                {"tg_call_id": call.id, "user_id": user_id, "outcome": "rejected_whitelist"},
-            )
-            await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
+            await self._reject_call(call, user_id, "rejected_whitelist")
             return
 
         if not self.rate_limiter.allow(user_id):
@@ -335,34 +360,20 @@ class TelegentApp:
                 self.settings.max_calls_per_window,
                 self.settings.call_window_seconds,
             )
-            self._emit(
-                "call.ended",
-                {"tg_call_id": call.id, "user_id": user_id, "outcome": "rejected_ratelimit"},
-            )
-            await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
+            await self._reject_call(call, user_id, "rejected_ratelimit")
             return
 
         if user_id in self.sessions:
             # Panggilan ganda dari user yang sama (mis. update terduplikasi):
             # tolak yang baru agar sesi lama tidak tertimpa/bocor.
             log.warning("Ditolak: sudah ada sesi aktif untuk user ini.")
-            self._emit(
-                "call.ended",
-                {"tg_call_id": call.id, "user_id": user_id, "outcome": "rejected_duplicate"},
-            )
-            await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
+            await self._reject_call(call, user_id, "rejected_duplicate")
             return
 
         if len(self.sessions) >= self.settings.max_concurrent_calls:
             log.warning("Ditolak: kapasitas penuh (%d sesi).", len(self.sessions))
-            self._emit(
-                "call.ended",
-                {"tg_call_id": call.id, "user_id": user_id, "outcome": "rejected_capacity"},
-            )
-            await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
+            await self._reject_call(call, user_id, "rejected_capacity")
             return
-
-        self._emit("call.incoming", {"tg_call_id": call.id, "user_id": user_id})
 
         assert self.ntg is not None
         session = CallSession(
@@ -375,6 +386,7 @@ class TelegentApp:
             settings=self.settings,
             logger=log,
             on_stop=self._make_stop(user_id),
+            on_event=self._make_session_event(call.id),
         )
         self.sessions[user_id] = session
         session.on_hangup = self._make_hangup(session)
@@ -396,6 +408,26 @@ class TelegentApp:
             log.exception("Gagal menerima panggilan.")
             self.sessions.pop(user_id, None)
             await session.close()
+            self._emit(
+                "call.ended",
+                {"tg_call_id": call.id, "user_id": user_id, "outcome": "error"},
+            )
+            self._observe_call(
+                "call_ended", call.id, user_id, outcome="error", end_reason="error"
+            )
+
+    async def _reject_call(
+        self, call: types.PhoneCallRequested, user_id: int, outcome: str
+    ) -> None:
+        """Tolak panggilan yang tidak lolos kebijakan; catat di bus & monitor."""
+        self._emit(
+            "call.ended",
+            {"tg_call_id": call.id, "user_id": user_id, "outcome": outcome},
+        )
+        self._observe_call(
+            "call_ended", call.id, user_id, outcome=outcome, end_reason="rejected"
+        )
+        await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
 
     async def _handle_call_established(self, call: types.PhoneCall) -> None:
         user_id = call.admin_id or call.participant_id
@@ -445,6 +477,7 @@ class TelegentApp:
                 "call.started",
                 {"tg_call_id": session.call_id, "user_id": session.user_id},
             )
+            self._observe_call("call_started", session.call_id, session.user_id)
         except Exception:  # noqa: BLE001
             log.exception("Gagal menyiapkan media/koneksi.")
             self.sessions.pop(session.user_id, None)
@@ -452,6 +485,13 @@ class TelegentApp:
             self._emit(
                 "call.ended",
                 {"tg_call_id": session.call_id, "user_id": session.user_id, "outcome": "error"},
+            )
+            self._observe_call(
+                "call_ended",
+                session.call_id,
+                session.user_id,
+                outcome="error",
+                end_reason="error",
             )
 
     async def _handle_call_discarded(self, call: types.PhoneCallDiscarded) -> None:
@@ -461,6 +501,7 @@ class TelegentApp:
         self.sessions.pop(session.user_id, None)
         duration = session.duration_seconds
         call_logger(session.user_id, session.call_id).info("Panggilan berakhir.")
+        end_reason = session.end_reason or "caller_hangup"
         await session.close()
         self._emit(
             "call.ended",
@@ -469,7 +510,16 @@ class TelegentApp:
                 "user_id": session.user_id,
                 "outcome": "answered",
                 "duration_sec": duration,
+                "end_reason": end_reason,
             },
+        )
+        self._observe_call(
+            "call_ended",
+            session.call_id,
+            session.user_id,
+            outcome="answered",
+            end_reason=end_reason,
+            duration_sec=duration,
         )
 
     async def _discard_call(self, call, reason, user_id: int) -> None:
@@ -495,6 +545,24 @@ class TelegentApp:
 
         return stop
 
+    def _make_session_event(self, call_id: int) -> Optional[Callable[[str, dict], None]]:
+        """Hook peristiwa sesi (transkrip/tool) untuk satu panggilan.
+
+        Mengembalikan `None` bila tidak ada pemantau, sehingga `CallSession`
+        tidak melakukan apa pun (jalur audio tetap nol tambahan).
+        """
+        observer = self._call_observer
+        if observer is None:
+            return None
+
+        def on_event(event: str, data: dict) -> None:
+            try:
+                observer.session_event(call_id, event, data)
+            except Exception:  # noqa: BLE001 - kegagalan monitor tak boleh mengganggu sesi
+                self._log.debug("Gagal mengirim event sesi '%s'.", event, exc_info=True)
+
+        return on_event
+
     def _make_hangup(self, session: "CallSession"):
         """Callback untuk mengakhiri panggilan dari sisi AI (tool end_call)."""
 
@@ -517,6 +585,25 @@ class TelegentApp:
                 except Exception:  # noqa: BLE001
                     log.exception("Gagal mengirim DiscardCall.")
             self.sessions.pop(session.user_id, None)
+            end_reason = session.end_reason or "ai_end_call"
             await session.close()
+            self._emit(
+                "call.ended",
+                {
+                    "tg_call_id": session.call_id,
+                    "user_id": session.user_id,
+                    "outcome": "answered",
+                    "duration_sec": session.duration_seconds,
+                    "end_reason": end_reason,
+                },
+            )
+            self._observe_call(
+                "call_ended",
+                session.call_id,
+                session.user_id,
+                outcome="answered",
+                end_reason=end_reason,
+                duration_sec=session.duration_seconds,
+            )
 
         return hangup

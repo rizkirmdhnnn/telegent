@@ -177,13 +177,19 @@ Semua tabel punya `created_at`/`updated_at` (UTC) kecuali dinyatakan lain.
 | tg_call_id | int | id panggilan Telegram |
 | user_id | int | id penelpon |
 | user_display | str? | nama/@username bila diketahui |
-| outcome | str | `answered`/`rejected_whitelist`/`rejected_ratelimit`/`rejected_capacity`/`rejected_duplicate`/`error` |
-| end_reason | str? | `caller_hangup`/`ai_end_call`/`max_duration`/`idle`/`error` |
-| started_at | datetime | saat ACTIVE |
+| outcome | str | `pending`/`answered`/`rejected_whitelist`/`rejected_ratelimit`/`rejected_capacity`/`rejected_duplicate`/`error` |
+| end_reason | str? | `caller_hangup`/`ai_end_call`/`max_duration`/`idle`/`panel_hangup`/`rejected`/`error` |
+| started_at | datetime | saat panggilan masuk (Q12); di-*update* ke waktu ACTIVE bila panggilan dijawab |
 | ended_at | datetime? | |
-| duration_sec | int? | |
+| duration_sec | int? | durasi sesi aktif (0 untuk panggilan ditolak) |
 | tool_call_count | int | default 0 |
 | transcript_count | int | default 0 |
+
+> **Catatan Fase 3 (Q12):** baris dibuat saat panggilan **masuk**, sehingga
+> penolakan (whitelist/rate-limit/kapasitas/duplikat) tetap tercatat dengan
+> `outcome` + `end_reason='rejected'`. Untuk panggilan yang dijawab,
+> `started_at` digeser ke waktu CALL ACTIVE agar konsisten dengan `duration_sec`
+> yang diukur runtime sejak sesi media siap.
 
 ### 5.6 `transcript_entry`
 | Kolom | Tipe | Catatan |
@@ -401,8 +407,16 @@ Gagal → catat `failed_attempts`; melebihi ambang → lockout sementara.
 
 ### 8.5 Monitoring
 - Runtime menerbitkan event ke `EventBus`; endpoint SSE meneruskan ke klien.
-- `call_record` dibuat saat panggilan mulai/berakhir; transkrip & tool call ditulis
-  saat event terkait terjadi (opsional bila `store_transcripts=false`).
+- `call_record` dibuat saat panggilan **masuk** (Q12, termasuk yang ditolak) dan
+  ditutup saat panggilan selesai; transkrip & tool call ditulis saat event
+  terkait terjadi (opsional bila `store_transcripts=false`, Q13).
+- Penulisan database dilakukan oleh satu task penulis (`CallRecorder`) di luar
+  jalur audio: hook hanya mengantrekan pekerjaan, dan antrean penuh berarti
+  data dibuang — bukan menunggu.
+- `store_transcripts=false` mematikan penyimpanan **dan** penyiaran teks
+  transkrip; `tool_call_record` tetap disimpan (metadata, bukan rekaman suara).
+- Secret disamarkan pada transkrip serta argumen/hasil tool sebelum ditulis maupun
+  disiarkan.
 
 ### 8.6 Kontrol runtime
 - `start`: bangun & jalankan `TelegentApp` sebagai task. `stop`: sinyal stop + tunggu

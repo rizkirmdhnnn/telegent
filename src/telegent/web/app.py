@@ -20,6 +20,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from telegent import __version__
 from telegent.app import EventSink
 from telegent.web.bootstrap import BootstrapConfig, load_bootstrap
+from telegent.web.call_recorder import build_recorder
 from telegent.web.crypto import SecretCipher
 from telegent.web.db import Database
 from telegent.web.db.migrate import upgrade_to_head_async
@@ -96,11 +97,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     cleanup_task = asyncio.create_task(
         app.state.telegram_login.cleanup_loop(), name="telegent-login-cleanup"
     )
+    # E1: perekam panggilan menulis riwayat/transkrip/tool ke DB lewat task
+    # background, sehingga jalur audio tidak pernah menunggu I/O.
+    app.state.call_recorder = await build_recorder(
+        db, store, bus=bus, redactor=redactor
+    )
     app.state.runtime = RuntimeController(
         store,
         session_dir=cfg.data_dir,
         event_sink=_publish_event(app),
         tool_config_provider=lambda: tool_configs_for_runtime(db),
+        call_observer=app.state.call_recorder,
     )
 
     configured = "siap" if await store.is_configured() else "belum lengkap"
@@ -119,6 +126,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         # Runtime controller (A7) ditutup sebelum database.
         await app.state.runtime.shutdown()
+        # Antrean pencatatan panggilan dikuras sebelum database ditutup.
+        await app.state.call_recorder.aclose()
         cleanup_task.cancel()
         with suppress(asyncio.CancelledError):
             await cleanup_task
@@ -126,6 +135,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings_store = None
         app.state.telegram_login = None
         app.state.runtime = None
+        app.state.call_recorder = None
         app.state.events = None
         await db.dispose()
         app.state.db = None
@@ -233,6 +243,7 @@ def create_app(config: BootstrapConfig | None = None) -> FastAPI:
     app.state.cipher = None
     app.state.settings_store = None
     app.state.telegram_login = None
+    app.state.call_recorder = None
     # Sesi dibuat di luar lifespan agar pengujian tetap bisa memakai app tanpa boot.
     app.state.sessions = SessionManager(cfg.session_ttl_hours)
 

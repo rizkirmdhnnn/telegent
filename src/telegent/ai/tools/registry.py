@@ -9,7 +9,14 @@ from typing import Any, Optional
 
 from google.genai import types as genai_types
 
-from telegent.ai.tools.spec import ToolContext, ToolRequest, ToolResponse, ToolSpec
+from telegent.ai.tools.spec import (
+    TOOL_STATUS_ERROR,
+    TOOL_STATUS_TIMEOUT,
+    ToolContext,
+    ToolRequest,
+    ToolResponse,
+    ToolSpec,
+)
 
 log = logging.getLogger("telegent.ai.tools")
 
@@ -124,9 +131,12 @@ class ToolRegistry:
                 request.id,
                 request.name,
                 {"error": f"Tool '{request.name}' timeout setelah {spec.timeout}s"},
+                status=TOOL_STATUS_TIMEOUT,
             )
         except Exception as exc:  # noqa: BLE001 - error tool tidak boleh mematikan sesi
-            return ToolResponse(request.id, request.name, {"error": str(exc)})
+            return ToolResponse(
+                request.id, request.name, {"error": str(exc)}, status=TOOL_STATUS_ERROR
+            )
 
     async def _invoke(
         self, spec: ToolSpec, ctx: ToolContext, args: dict[str, Any]
