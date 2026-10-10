@@ -158,11 +158,11 @@ Semua tabel punya `created_at`/`updated_at` (UTC) kecuali dinyatakan lain.
 ### 5.4 `login_flow` (state sementara login)
 | Kolom | Tipe | Catatan |
 |---|---|---|
-| id | int PK | |
+| id | int PK | `AUTOINCREMENT` — id tidak pernah dipakai ulang sehingga `flow_id` dari API selalu unik |
 | phone | str | |
-| phone_code_hash | str | dari `send_code` |
-| status | str | `code_sent`/`awaiting_password`/`done`/`error` |
-| created_at | datetime | TTL ~10 menit; dibersihkan berkala |
+| phone_code_hash | str | dari `send_code` (**tidak pernah** masuk log/audit) |
+| status | str | `code_sent`/`awaiting_password`/`done` |
+| created_at | datetime | TTL ±10 menit; dibersihkan berkala (tiap 5 menit) |
 | expires_at | datetime | |
 
 ### 5.5 `call_record`

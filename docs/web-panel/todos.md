@@ -39,7 +39,7 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 ## Fase 2 — Login Telegram
 
 - [x] **D1** Layanan login Telegram programatik (send_code/verify/2FA, error) — L
-- [ ] **D2** API akun & login Telegram — M
+- [x] **D2** API akun & login Telegram — M
 - [ ] **D3** UI login/akun Telegram (kode, password, status, hitung mundur) — M
 
 ## Fase 3 — Pemantauan

@@ -82,7 +82,9 @@ class LoginFlow(Base):
 
     __tablename__ = "login_flow"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # `autoincrement` → SQLite memakai AUTOINCREMENT sehingga id tidak pernah
+    # dipakai ulang setelah flow dihapus; `flow_id` dari API selalu unik.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     phone: Mapped[str] = mapped_column(String(32), nullable=False)
     phone_code_hash: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="code_sent", nullable=False)

@@ -10,6 +10,7 @@ from telegent.web.routers import (
     runtime,
     settings,
     setup,
+    telegram,
     tools,
 )
 
@@ -22,6 +23,7 @@ ROUTERS = [
     settings.router,
     credentials.router,
     tools.router,
+    telegram.router,
     runtime.router,
 ]
 
@@ -34,5 +36,6 @@ __all__ = [
     "runtime",
     "settings",
     "setup",
+    "telegram",
     "tools",
 ]

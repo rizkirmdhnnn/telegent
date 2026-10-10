@@ -433,6 +433,9 @@ class TelegramLoginService:
             await self._safely_set_logged_out()
         if not credentials_ready and status != ACCOUNT_LOGGED_IN:
             status = ACCOUNT_NOT_CONFIGURED
+        elif status == ACCOUNT_NOT_CONFIGURED and credentials_ready:
+            # Kredensial sudah ada tetapi belum pernah ada percobaan login.
+            status = ACCOUNT_LOGGED_OUT
 
         user = None
         if account.tg_user_id is not None:

@@ -411,9 +411,14 @@ async def test_flow_baru_membatalkan_flow_lama(
     second = await service.start(_PHONE)
 
     assert first_client.stopped is True
-    # Hanya flow terbaru yang tersisa (SQLite boleh memakai ulang id baris).
+    # Id flow tidak pernah dipakai ulang, jadi flow lama benar-benar hilang.
+    assert second.flow_id != first.flow_id
     flows = await _flows(database)
     assert [flow.id for flow in flows] == [second.flow_id]
+
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.verify(first.flow_id, _CODE)
+    assert excinfo.value.code == "flow_not_found"
 
 
 async def test_flow_kedaluwarsa_ditolak(
