@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import signal
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Callable, Optional
 
 import ntgcalls
 from google import genai
@@ -24,17 +24,27 @@ from telegent.telegram.call_session import CallSession, SessionState
 from telegent.telegram.media import NtgAudioSink, external_audio_media
 from telegent.telegram.signaling import SignalingService, to_ntg_rtc_server, to_tg_protocol
 
+#: Pemantau opsional untuk panel web: (nama_event, payload) -> None.
+EventSink = Callable[[str, dict], None]
+
 
 class TelegentApp:
     """Aplikasi utama: menerima panggilan Telegram dan menjalankan sesi AI per panggilan."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        install_signal_handlers: bool = True,
+        event_sink: Optional[EventSink] = None,
+    ) -> None:
         self.settings = settings
         self._log = get_logger("telegent.app")
         self.app: Optional[Client] = None
         self.ntg: Optional[ntgcalls.NTgCalls] = None
         self.gemini_client: Optional[genai.Client] = None
         self.signaling: Optional[SignalingService] = None
+        self.me: Optional[object] = None
         self.tools = ToolRegistry()
         for spec in default_tools():
             self.tools.register(spec)
@@ -44,9 +54,50 @@ class TelegentApp:
         )
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self._stop = asyncio.Event()
+        self._install_signal_handlers_on_start = install_signal_handlers
+        self._event_sink = event_sink
+        self._started = False
+
+    # -------------------------------------------------------------- properties
+
+    @property
+    def is_running(self) -> bool:
+        """True bila klien Telegram sudah start dan belum dihentikan."""
+        return self._started and not self._stop.is_set()
+
+    @property
+    def active_call_count(self) -> int:
+        return len(self.sessions)
 
     # ---------------------------------------------------------------- lifecycle
-    async def run(self) -> None:
+
+    def set_settings(self, settings: Settings) -> None:
+        """Ganti konfigurasi untuk panggilan berikutnya (live-apply).
+
+        Panggilan yang sedang berjalan tetap memakai konfigurasi lamanya.
+        """
+        self.settings = settings
+        self.rate_limiter = CallRateLimiter(
+            settings.max_calls_per_window, settings.call_window_seconds
+        )
+
+    def _emit(self, event: str, payload: dict) -> None:
+        """Terbitkan event ke pemantau web (diabaikan bila tidak ada pemantau)."""
+        if self._event_sink is None:
+            return
+        try:
+            self._event_sink(event, payload)
+        except Exception:  # noqa: BLE001 - pemantau tidak boleh mengganggu bot
+            self._log.debug("Gagal menerbitkan event '%s'.", event, exc_info=True)
+
+    async def start(self) -> None:
+        """Bangun klien dan mulai menerima panggilan.
+
+        Melempar exception bila gagal (kredensial/sesi tidak valid).
+        """
+        if self._started:
+            return
+
         self.loop = asyncio.get_running_loop()
         self.app = Client(
             self.settings.telegram_session_name,
@@ -60,21 +111,34 @@ class TelegentApp:
 
         self._setup_ntg_callbacks()
         self._setup_handlers()
-        self._install_signal_handlers()
+        if self._install_signal_handlers_on_start:
+            self._install_signal_handlers()
 
         await self.app.start()
-        me = await self.app.get_me()
-        self._log.info("Login sebagai: %s (@%s, id=%s)", me.first_name, me.username or "-", me.id)
+        self.me = await self.app.get_me()
+        self._started = True
+        self._log.info(
+            "Login sebagai: %s (@%s, id=%s)", self.me.first_name, self.me.username or "-", self.me.id
+        )
         self._log.info(
             "Telegent aktif. Menunggu panggilan (maks %d bersamaan, model=%s).",
             self.settings.max_concurrent_calls,
             self.settings.gemini_model,
         )
+        self._emit("status", self.status_payload())
 
+    async def wait_stopped(self) -> None:
+        """Tunggu sampai diminta berhenti (SIGINT/SIGTERM atau `stop()`)."""
         await self._stop.wait()
-        await self._shutdown()
 
-    async def _shutdown(self) -> None:
+    async def stop(self) -> None:
+        """Minta aplikasi berhenti; boleh dipanggil berulang."""
+        self._stop.set()
+
+    async def shutdown(self) -> None:
+        """Tutup sesi & klien (idempoten)."""
+        if not self._started and self.app is None:
+            return
         self._log.info("Mematikan; menutup %d sesi aktif.", len(self.sessions))
         for session in list(self.sessions.values()):
             await session.close()
@@ -84,6 +148,39 @@ class TelegentApp:
                 await self.app.stop()
             except Exception as exc:  # noqa: BLE001
                 self._log.warning("Gagal menutup klien Telegram: %s", exc)
+        self._started = False
+        self.app = None
+
+    def status_payload(self) -> dict:
+        """Ringkasan status untuk panel web."""
+        me = self.me
+        return {
+            "running": self.is_running,
+            "active_calls": self.active_call_count,
+            "model": self.settings.gemini_model,
+            "max_concurrent_calls": self.settings.max_concurrent_calls,
+            "logged_in_user": (
+                {
+                    "id": getattr(me, "id", None),
+                    "first_name": getattr(me, "first_name", None),
+                    "username": getattr(me, "username", None),
+                }
+                if me is not None
+                else None
+            ),
+        }
+
+    async def serve(self) -> None:
+        """Jalankan bot sampai dihentikan (start → wait → shutdown)."""
+        await self.start()
+        try:
+            await self._stop.wait()
+        finally:
+            await self.shutdown()
+
+    async def run(self) -> None:
+        """Entry point untuk mode headless (`telegent --no-web`)."""
+        await self.serve()
 
     def _install_signal_handlers(self) -> None:
         assert self.loop is not None
@@ -212,6 +309,10 @@ class TelegentApp:
         allowed = self.settings.allowed_user_id_set
         if allowed and user_id not in allowed:
             log.warning("Ditolak: user tidak ada di whitelist.")
+            self._emit(
+                "call.ended",
+                {"tg_call_id": call.id, "user_id": user_id, "outcome": "rejected_whitelist"},
+            )
             await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
             return
 
@@ -221,6 +322,10 @@ class TelegentApp:
                 self.settings.max_calls_per_window,
                 self.settings.call_window_seconds,
             )
+            self._emit(
+                "call.ended",
+                {"tg_call_id": call.id, "user_id": user_id, "outcome": "rejected_ratelimit"},
+            )
             await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
             return
 
@@ -228,13 +333,23 @@ class TelegentApp:
             # Panggilan ganda dari user yang sama (mis. update terduplikasi):
             # tolak yang baru agar sesi lama tidak tertimpa/bocor.
             log.warning("Ditolak: sudah ada sesi aktif untuk user ini.")
+            self._emit(
+                "call.ended",
+                {"tg_call_id": call.id, "user_id": user_id, "outcome": "rejected_duplicate"},
+            )
             await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
             return
 
         if len(self.sessions) >= self.settings.max_concurrent_calls:
             log.warning("Ditolak: kapasitas penuh (%d sesi).", len(self.sessions))
+            self._emit(
+                "call.ended",
+                {"tg_call_id": call.id, "user_id": user_id, "outcome": "rejected_capacity"},
+            )
             await self._discard_call(call, types.PhoneCallDiscardReasonBusy(), user_id)
             return
+
+        self._emit("call.incoming", {"tg_call_id": call.id, "user_id": user_id})
 
         assert self.ntg is not None
         session = CallSession(
@@ -313,18 +428,36 @@ class TelegentApp:
 
             log.info("Media P2P terhubung; membuka sesi Gemini.")
             session.start()
+            self._emit(
+                "call.started",
+                {"tg_call_id": session.call_id, "user_id": session.user_id},
+            )
         except Exception:  # noqa: BLE001
             log.exception("Gagal menyiapkan media/koneksi.")
             self.sessions.pop(session.user_id, None)
             await session.close()
+            self._emit(
+                "call.ended",
+                {"tg_call_id": session.call_id, "user_id": session.user_id, "outcome": "error"},
+            )
 
     async def _handle_call_discarded(self, call: types.PhoneCallDiscarded) -> None:
         session = self._session_by_call_id(call.id)
         if session is None:
             return
         self.sessions.pop(session.user_id, None)
+        duration = session.duration_seconds
         call_logger(session.user_id, session.call_id).info("Panggilan berakhir.")
         await session.close()
+        self._emit(
+            "call.ended",
+            {
+                "tg_call_id": session.call_id,
+                "user_id": session.user_id,
+                "outcome": "answered",
+                "duration_sec": duration,
+            },
+        )
 
     async def _discard_call(self, call, reason, user_id: int) -> None:
         if self.app is None:

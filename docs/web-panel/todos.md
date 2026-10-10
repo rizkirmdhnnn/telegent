@@ -15,7 +15,7 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 - [x] **A4** Settings registry + SettingsStore (DB ⇄ `Settings`, import `.env`) — L
 - [x] **A5** Auth admin (password, cookie sesi, CSRF) + first-run setup + TOTP — L
 - [x] **A6** Audit log (infra + masking secret) — S
-- [ ] **A7** Refactor `TelegentApp` + `RuntimeController` (start/stop/restart) — L
+- [x] **A7** Refactor `TelegentApp` + `RuntimeController` (start/stop/restart) — L
 - [ ] **A8** EventBus + logging handler SSE (redaksi, buffer) — M
 
 ## Fase 1 — Konfigurasi

@@ -1,0 +1,281 @@
+"""Kontrol runtime bot dari panel web: start, stop, restart, dan status.
+
+`RuntimeController` membungkus `TelegentApp` sehingga dapat dijalankan, dihentikan,
+dan di-restart **tanpa mematikan proses web**. Semua operasi diserialisasi dengan
+seatuang agar aman dari klik ganda.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any, Callable, Optional
+
+from telegent.app import EventSink, TelegentApp
+from telegent.config import Settings
+from telegent.web.db.base import utcnow
+from telegent.web.settings_registry import REGISTRY, ApplyMode
+from telegent.web.settings_store import NotConfigured, SettingsStore
+
+log = logging.getLogger("telegent.web.runtime")
+
+STOP_TIMEOUT_SEC = 20.0
+
+#: Pabrik TelegentApp (di-override pada pengujian dengan fake).
+AppFactory = Callable[[Settings], TelegentApp]
+
+
+class RuntimeState(str, Enum):
+    """Status runtime yang ditampilkan ke UI."""
+
+    STOPPED = "stopped"
+    STARTING = "starting"
+    RUNNING = "running"
+    STOPPING = "stopping"
+    NOT_CONFIGURED = "not_configured"
+    NEEDS_LOGIN = "needs_login"
+    ERROR = "error"
+
+
+@dataclass
+class RuntimeStatus:
+    """Ringkasan status runtime (siap dikirim sebagai JSON)."""
+
+    state: RuntimeState = RuntimeState.STOPPED
+    running: bool = False
+    model: str | None = None
+    active_calls: int = 0
+    logged_in_user: dict[str, Any] | None = None
+    last_error: str | None = None
+    since: str | None = None
+    pending_restart: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["state"] = self.state.value
+        return data
+
+
+class RuntimeController:
+    """Mengelola satu instance `TelegentApp` di dalam proses web."""
+
+    def __init__(
+        self,
+        store: SettingsStore,
+        *,
+        app_factory: AppFactory | None = None,
+        event_sink: EventSink | None = None,
+        session_dir: Path | None = None,
+    ) -> None:
+        self._store = store
+        self._app_factory: AppFactory = app_factory or (
+            lambda settings: TelegentApp(
+                settings, install_signal_handlers=False, event_sink=event_sink
+            )
+        )
+        self._session_dir = session_dir
+        self._app: Optional[TelegentApp] = None
+        self._task: Optional[asyncio.Task[None]] = None
+        self._state = RuntimeState.STOPPED
+        self._last_error: str | None = None
+        self._since: str | None = None
+        self._settings: Optional[Settings] = None
+        self._pending_restart: list[str] = []
+        self._lock = asyncio.Lock()
+
+    # ------------------------------------------------------------- properties
+
+    @property
+    def app(self) -> Optional[TelegentApp]:
+        return self._app
+
+    @property
+    def state(self) -> RuntimeState:
+        return self._state
+
+    @property
+    def settings(self) -> Optional[Settings]:
+        return self._settings
+
+    # ------------------------------------------------------------------ status
+
+    def status(self) -> RuntimeStatus:
+        """Status saat ini (aman dipanggil kapan saja)."""
+        payload: dict[str, Any] = {}
+        if self._app is not None:
+            try:
+                payload = self._app.status_payload()
+            except Exception:  # noqa: BLE001 - jangan pernah gagalkan endpoint status
+                payload = {}
+
+        return RuntimeStatus(
+            state=self._state,
+            running=bool(self._state is RuntimeState.RUNNING and payload.get("running")),
+            model=payload.get("model") or (self._settings.gemini_model if self._settings else None),
+            active_calls=int(payload.get("active_calls", 0)),
+            logged_in_user=payload.get("logged_in_user"),
+            last_error=self._last_error,
+            since=self._since,
+            pending_restart=list(self._pending_restart),
+        )
+
+    # ------------------------------------------------------------- lifecycle
+
+    async def start(self) -> RuntimeStatus:
+        """Jalankan bot bila konfigurasi & sesi Telegram siap."""
+        async with self._lock:
+            if self._state is RuntimeState.RUNNING:
+                return self.status()
+
+            self._state = RuntimeState.STARTING
+            self._last_error = None
+
+            try:
+                settings = await self._store.build_settings()
+            except NotConfigured as exc:
+                self._state = RuntimeState.NOT_CONFIGURED
+                self._last_error = str(exc)
+                log.info("Runtime belum dijalankan: konfigurasi kurang (%s).", exc)
+                return self.status()
+
+            if not self._is_logged_in(settings):
+                self._state = RuntimeState.NEEDS_LOGIN
+                self._last_error = "Belum ada sesi Telegram. Silakan login di halaman Telegram."
+                log.info("Runtime belum dijalankan: sesi Telegram belum ada.")
+                return self.status()
+
+            app = self._app_factory(settings)
+            try:
+                await app.start()
+            except Exception as exc:  # noqa: BLE001 - kegagalan bot tidak mematikan web
+                self._state = RuntimeState.ERROR
+                self._last_error = self._safe_error(exc)
+                log.exception("Gagal menjalankan bot.")
+                return self.status()
+
+            self._app = app
+            self._settings = settings
+            self._state = RuntimeState.RUNNING
+            self._since = utcnow().isoformat() + "Z"
+            self._task = asyncio.create_task(self._supervise(app), name="telegent-runtime")
+            self._pending_restart = await self._store.restart_keys_pending(settings)
+            log.info("Runtime berjalan (model=%s).", settings.gemini_model)
+            return self.status()
+
+    async def _supervise(self, app: TelegentApp) -> None:
+        """Tunggu aplikasi berhenti, lalu bersihkan state internal."""
+        try:
+            await app.wait_stopped()
+        except asyncio.CancelledError:  # pragma: no cover - hanya saat shutdown
+            raise
+        finally:
+            await app.shutdown()
+            if self._app is app:
+                self._app = None
+                self._task = None
+                self._state = RuntimeState.STOPPED
+                self._since = None
+
+    async def stop(self) -> RuntimeStatus:
+        """Hentikan bot (menunggu sesi ditutup)."""
+        async with self._lock:
+            app = self._app
+            if app is None:
+                if self._state in (
+                    RuntimeState.NOT_CONFIGURED,
+                    RuntimeState.NEEDS_LOGIN,
+                    RuntimeState.ERROR,
+                ):
+                    self._state = RuntimeState.STOPPED
+                return self.status()
+
+            self._state = RuntimeState.STOPPING
+            await app.stop()
+            task = self._task
+            if task is not None:
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=STOP_TIMEOUT_SEC)
+                except asyncio.TimeoutError:
+                    log.warning("Runtime tidak berhenti dalam %ss; dipaksa.", STOP_TIMEOUT_SEC)
+                    task.cancel()
+                    await app.shutdown()
+                    self._app = None
+                    self._task = None
+                    self._state = RuntimeState.STOPPED
+                    self._since = None
+            return self.status()
+
+    async def restart(self) -> RuntimeStatus:
+        """Berhenti lalu jalankan kembali dengan konfigurasi terbaru."""
+        await self.stop()
+        async with self._lock:
+            self._state = RuntimeState.STOPPED
+            self._app = None
+            self._task = None
+        return await self.start()
+
+    async def shutdown(self) -> None:
+        """Dipanggil saat proses web berhenti."""
+        try:
+            await self.stop()
+        except Exception:  # noqa: BLE001 - jangan gagalkan shutdown web
+            log.exception("Gagal menghentikan runtime saat shutdown web.")
+
+    # -------------------------------------------------------------- konfigurasi
+
+    async def refresh_settings(self) -> RuntimeStatus:
+        """Terapkan konfigurasi terbaru (live-apply) bila bot sedang jalan.
+
+        Hanya setting kelas `hot` yang langsung diterapkan; nilai yang ditandai
+        `restart` tetap memakai konfigurasi lama sampai bot di-restart.
+        """
+        try:
+            stored = await self._store.build_settings()
+        except NotConfigured:
+            self._pending_restart = []
+            return self.status()
+
+        # Hitung tertunda terhadap konfigurasi yang SEDANG dipakai runtime.
+        self._pending_restart = await self._store.restart_keys_pending(self._settings)
+
+        if self._app is not None and self._state is RuntimeState.RUNNING:
+            effective = self._effective_settings(stored)
+            self._app.set_settings(effective)
+            self._settings = effective
+            log.info("Konfigurasi hot diterapkan ke runtime.")
+        return self.status()
+
+    def _effective_settings(self, stored: Settings) -> Settings:
+        """Nilai hot terbaru + nilai lama untuk setting yang perlu restart."""
+        if self._settings is None:
+            return stored
+        data = stored.model_dump()
+        for key, spec in REGISTRY.items():
+            if spec.apply is ApplyMode.RESTART and key in Settings.model_fields:
+                data[key] = getattr(self._settings, key)
+        return Settings.model_validate(data)
+
+    async def apply_pending(self) -> RuntimeStatus:
+        """Restart bila ada perubahan yang menunggu; jika tidak, refresh saja."""
+        if not await self._store.restart_keys_pending(self._settings):
+            return await self.refresh_settings()
+        return await self.restart()
+
+    # ------------------------------------------------------------------ utilitas
+
+    def _is_logged_in(self, settings: Settings) -> bool:
+        """True bila berkas sesi Telegram tersedia."""
+        directory = self._session_dir
+        if directory is None:
+            directory = Path(settings.session_dir)
+        name = settings.telegram_session_name
+        return (directory / f"{name}.session").exists()
+
+    @staticmethod
+    def _safe_error(exc: Exception) -> str:
+        """Ubah exception menjadi pesan singkat tanpa membocorkan secret."""
+        message = str(exc).strip() or exc.__class__.__name__
+        return message[:300]

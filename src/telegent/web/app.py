@@ -17,12 +17,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import RequestResponseEndpoint
 
 from telegent import __version__
+from telegent.app import EventSink
 from telegent.web.bootstrap import BootstrapConfig, load_bootstrap
 from telegent.web.crypto import SecretCipher
 from telegent.web.db import Database
 from telegent.web.db.migrate import upgrade_to_head_async
 from telegent.web.errors import install_error_handlers
 from telegent.web.routers import ROUTERS
+from telegent.web.runtime import RuntimeController
 from telegent.web.security import SessionManager
 from telegent.web.settings_store import SettingsStore
 
@@ -62,6 +64,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.db = db
     app.state.cipher = cipher
     app.state.settings_store = store
+    app.state.runtime = RuntimeController(
+        store, session_dir=cfg.data_dir, event_sink=_publish_event(app)
+    )
 
     configured = "siap" if await store.is_configured() else "belum lengkap"
     log.info(
@@ -71,11 +76,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         configured,
         cfg.frontend_dist if cfg.has_frontend else "(belum dibangun)",
     )
+    if cfg.autostart_bot and await store.is_configured():
+        await app.state.runtime.start()
+
     try:
         yield
     finally:
-        # Runtime controller (A7) akan menutup diri sebelum database.
+        # Runtime controller (A7) ditutup sebelum database.
+        await app.state.runtime.shutdown()
         app.state.settings_store = None
+        app.state.runtime = None
         await db.dispose()
         app.state.db = None
         log.info("Web panel berhenti.")
@@ -91,6 +101,25 @@ def _add_security_headers(app: FastAPI) -> None:
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         return response
+
+
+def _publish_event(app: FastAPI) -> EventSink:
+    """Jembatan event runtime → event bus panel (dipasang pada A8).
+
+    Bus belum ada pada fase ini, jadi pemanggilan diabaikan dengan aman.
+    """
+
+    def sink(event: str, payload: dict) -> None:
+        bus = getattr(app.state, "events", None)
+        publish = getattr(bus, "publish", None)
+        if publish is None:
+            return
+        try:
+            publish(event, payload)
+        except Exception:  # noqa: BLE001 - pemantau tidak boleh mengganggu bot
+            log.debug("Gagal menerbitkan event '%s'.", event, exc_info=True)
+
+    return sink
 
 
 def _is_api_path(full_path: str) -> bool:
