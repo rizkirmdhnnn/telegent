@@ -21,7 +21,9 @@ from telegent.web.bootstrap import BootstrapConfig, load_bootstrap
 from telegent.web.crypto import SecretCipher
 from telegent.web.db import Database
 from telegent.web.db.migrate import upgrade_to_head_async
+from telegent.web.errors import install_error_handlers
 from telegent.web.routers import ROUTERS
+from telegent.web.security import SessionManager
 from telegent.web.settings_store import SettingsStore
 
 log = logging.getLogger("telegent.web")
@@ -158,6 +160,12 @@ def create_app(config: BootstrapConfig | None = None) -> FastAPI:
     app.state.db = None
     app.state.events = None
     app.state.runtime = None
+    app.state.cipher = None
+    app.state.settings_store = None
+    # Sesi dibuat di luar lifespan agar pengujian tetap bisa memakai app tanpa boot.
+    app.state.sessions = SessionManager(cfg.session_ttl_hours)
+
+    install_error_handlers(app)
 
     for router in ROUTERS:
         app.include_router(router, prefix=API_PREFIX)
