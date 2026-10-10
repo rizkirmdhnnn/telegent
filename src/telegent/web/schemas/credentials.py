@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from telegent.web.schemas.base import SimpleOkResponse
+
 
 class TelegramCredentialsRequest(BaseModel):
     """Permintaan simpan kredensial Telegram.
@@ -46,9 +48,3 @@ class ValidateCredentialsResponse(BaseModel):
     valid: bool
     code: str
     message: str
-
-
-class SimpleOkResponse(BaseModel):
-    """Respons standar `{ok: true}`."""
-
-    ok: bool = True

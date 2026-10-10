@@ -165,9 +165,11 @@
     "logout_success": "Sesi Telegram dihapus dari server.",
     "credentials_missing_desc": "Kredensial aplikasi Telegram (API ID dan API Hash) belum diisi. Login tidak bisa dijalankan sebelum kredensial tersedia.",
     "go_to_credentials": "Isi Kredensial",
-    "session_mismatch_desc": "Nama sesi di pengaturan kini \"{current}\", sedangkan sesi yang aktif dibuat dengan nama lain. Bot yang berjalan memakai sesi lama; login ulang untuk memakai nama sesi terbaru.",
+    "session_mismatch_desc": "Nama sesi saat ini berbeda ({current}). Bot memakai sesi lain. Keluar dulu, lalu sambungkan kembali akun Telegram.",
     "notes_title": "Catatan",
-    "notes_desc": "Ganti akun selalu lewat logout lalu login baru. Sesi Telegram disimpan di direktori data server."
+    "notes_desc": "Ganti akun selalu lewat logout lalu login baru. Sesi Telegram disimpan di direktori data server.",
+    "switch_account": "Ganti akun",
+    "switch_account_ready": "Sesi lama ditutup. Masukkan nomor telepon untuk connects akun baru."
   },
   "errors": {
     "unauthenticated": "Sesi telah berakhir. Silakan masuk kembali.",
@@ -206,7 +208,8 @@
     "account_not_logged_in": "Belum ada akun Telegram yang login.",
     "bot_running": "Bot sedang berjalan. Hentikan bot sebelum mengganti akun Telegram.",
     "flow_not_found": "Alur login sudah berakhir. Mulai ulang alur.",
-    "flow_expired": "Alur login sudah kedaluwarsa. Mulai ulang alur."
+    "flow_expired": "Alur login sudah kedaluwarsa. Mulai ulang alur.",
+    "telegram_unreachable": "Tidak dapat terhubung ke server Telegram."
   },
   "labels": {
     "telegram_api_id": "Telegram API ID",

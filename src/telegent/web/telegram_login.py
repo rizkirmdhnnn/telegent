@@ -12,8 +12,12 @@ Prinsip yang dijaga di sini:
 - **Rahasia tidak pernah masuk log.** `phone_code_hash`, kode OTP, dan password
   tidak pernah menjadi argumen pemanggilan `log`; nilainya didaftarkan ke
   `SecretRedactor` sebagai pengaman kedua.
+- **Lock hanya untuk state in-memory, bukan untuk I/O jaringan.** Satu
+  `send_code` yang menggantung tidak boleh membekukan `logout`/`cancel`.
 - **Tidak menyentuh jaringan saat diuji.** Klien dibuat lewat `ClientFactory`;
   tes meng-*stub* `Client` pada modul ini.
+
+Akses database tidak ada di sini; semuanya lewat `TelegramStore`.
 """
 
 from __future__ import annotations
@@ -24,30 +28,30 @@ import re
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, Callable
 
 from pyrogram import Client
-from pyrogram.errors import (
-    AuthKeyUnregistered,
-    Flood,
-    PasswordHashInvalid,
-    PhoneCodeEmpty,
-    PhoneCodeExpired,
-    PhoneCodeInvalid,
-    PhoneNumberBanned,
-    PhoneNumberFlood,
-    PhoneNumberInvalid,
-    PhoneNumberUnoccupied,
-    PhonePasswordFlood,
-    SessionPasswordNeeded,
-    SessionRevoked,
-)
-from sqlalchemy import CursorResult, delete, select
-
+from pyrogram.errors import SessionPasswordNeeded
 from telegent.web.db import models
-from telegent.web.db.base import Database, utcnow
+from telegent.web.db.base import Database
 from telegent.web.log_stream import SecretRedactor
+from telegent.web.telegram_errors import (
+    ACCOUNT_BREAKING_CODES,
+    TelegramLoginError,
+    map_exception,
+)
 from telegent.web.settings_store import SettingsStore
+from telegent.web.telegram_store import (
+    ACCOUNT_ERROR,
+    ACCOUNT_LOGGED_IN,
+    ACCOUNT_LOGGED_OUT,
+    ACCOUNT_NOT_CONFIGURED,
+    FLOW_AWAITING_PASSWORD,
+    FLOW_CODE_SENT,
+    FlowExpired,
+    FlowNotFound,
+    TelegramStore,
+)
 
 log = logging.getLogger("telegent.web.telegram")
 
@@ -55,122 +59,16 @@ log = logging.getLogger("telegent.web.telegram")
 LOGIN_FLOW_TTL = timedelta(minutes=10)
 #: Jeda antar pembersihan `login_flow` kedaluwarsa.
 CLEANUP_INTERVAL_SEC = 300.0
-#: `telegram_account` hanya menyimpan satu baris (keputusan single-tenant).
-ACCOUNT_ROW_ID = 1
 #: Nama sesi cadangan bila setting `telegram_session_name` kosong.
 DEFAULT_SESSION_NAME = "userbot_session"
-
-# Status akun (spesifikasi §5.3).
-ACCOUNT_NOT_CONFIGURED = "not_configured"
-ACCOUNT_LOGGED_OUT = "logged_out"
-ACCOUNT_LOGGED_IN = "logged_in"
-ACCOUNT_ERROR = "error"
-
-# Status alur login (spesifikasi §5.4).
-FLOW_CODE_SENT = "code_sent"
-FLOW_AWAITING_PASSWORD = "awaiting_password"
-FLOW_DONE = "done"
 
 # Nilai langkah berikutnya pada respons API.
 NEXT_CODE = "code"
 NEXT_PASSWORD = "password"
 NEXT_DONE = "done"
 
-#: Pabrik klien Pyrogram: `(session_name, api_id, api_hash, workdir)` → klien.
-ClientFactory = Callable[[str, int, str, Path], Any]
-
 _PHONE_NON_DIGITS = re.compile(r"[^0-9]")
 _PHONE_FORMAT = re.compile(r"^\+?[0-9]{8,15}$")
-
-#: Pesan cadangan (bahasa Indonesia) bila UI tidak punya terjemahan kodenya.
-DEFAULT_MESSAGES: dict[str, str] = {
-    "phone_invalid": "Nomor telepon tidak valid atau tidak terdaftar di Telegram.",
-    "code_invalid": "Kode konfirmasi salah.",
-    "code_expired": "Kode konfirmasi sudah kedaluwarsa. Minta kode baru.",
-    "password_invalid": "Password 2FA salah.",
-    "flood_wait": "Terlalu banyak permintaan ke Telegram. Coba lagi nanti.",
-    "api_credentials_missing": "Kredensial Telegram (API ID dan API Hash) belum diisi.",
-    "network_error": "Tidak dapat terhubung ke Telegram.",
-    "session_invalid": "Sesi Telegram tidak valid lagi. Hapus sesi lalu login ulang.",
-    "telegram_error": "Telegram menolak permintaan ini.",
-    "already_logged_in": "Sudah ada akun Telegram yang login. Logout dulu untuk mengganti akun.",
-    "account_not_logged_in": "Belum ada akun Telegram yang login.",
-    "flow_not_found": "Alur login tidak ditemukan atau sudah dibatalkan.",
-    "flow_expired": "Alur login sudah kedaluwarsa. Mulai lagi dari nomor telepon.",
-}
-
-#: Pemetaan exception Pyrogram → kode stabil (urut dari yang paling spesifik).
-_EXCEPTION_CODES: tuple[tuple[type[BaseException], str], ...] = (
-    (PhoneNumberInvalid, "phone_invalid"),
-    (PhoneNumberUnoccupied, "phone_invalid"),
-    (PhoneNumberBanned, "phone_invalid"),
-    (PhoneNumberFlood, "flood_wait"),
-    (PhoneCodeInvalid, "code_invalid"),
-    (PhoneCodeEmpty, "code_invalid"),
-    (PhoneCodeExpired, "code_expired"),
-    (PasswordHashInvalid, "password_invalid"),
-    (PhonePasswordFlood, "flood_wait"),
-    (AuthKeyUnregistered, "session_invalid"),
-    (SessionRevoked, "session_invalid"),
-)
-
-#: Galat yang berarti "langkah berikutnya butuh password 2FA".
-_SESSION_PASSWORD_EXCEPTIONS = (SessionPasswordNeeded,)
-
-#: Galat yang membuat status akun `error` (sesi rusak, bukan sekadar salah input).
-_ACCOUNT_BREAKING_CODES = frozenset({"session_invalid"})
-
-
-class TelegramLoginError(RuntimeError):
-    """Kegagalan login dengan **kode stabil** (bukan pesan mentah Pyrogram)."""
-
-    def __init__(
-        self,
-        code: str,
-        *,
-        retry_after: int | None = None,
-        status_code: int = 400,
-        message: str | None = None,
-    ) -> None:
-        super().__init__(message or code)
-        self.code = code
-        self.retry_after = retry_after
-        self.status_code = status_code
-        self.message = message or DEFAULT_MESSAGES.get(code, code)
-
-    def fields(self) -> dict[str, Any]:
-        """Bagian `error.fields` pada amplop galat API."""
-        return {} if self.retry_after is None else {"retry_after": self.retry_after}
-
-
-def _as_seconds(value: Any) -> int:
-    """Ambil nilai detik dari exception Flood (aman bila bukan angka positif)."""
-    try:
-        seconds = int(value)  # pyright: ignore[reportArgumentType]
-    except (TypeError, ValueError):
-        return 0
-    return seconds if seconds > 0 else 0
-
-
-def map_exception(exc: BaseException) -> TelegramLoginError:
-    """Terjemahkan exception apa pun menjadi `TelegramLoginError` ber-kode."""
-    if isinstance(exc, Flood):
-        return TelegramLoginError(
-            "flood_wait",
-            retry_after=_as_seconds(getattr(exc, "value", None)),
-            status_code=429,
-        )
-    for exc_type, code in _EXCEPTION_CODES:
-        if isinstance(exc, exc_type):
-            retry_after = (
-                _as_seconds(getattr(exc, "value", None)) if code == "flood_wait" else None
-            )
-            status = 429 if code == "flood_wait" else 400
-            return TelegramLoginError(code, retry_after=retry_after, status_code=status)
-    if isinstance(exc, (OSError, TimeoutError)):
-        return TelegramLoginError("network_error", status_code=502)
-    return TelegramLoginError("telegram_error", status_code=502)
-
 
 def normalize_phone(phone: str) -> str:
     """Bersihkan nomor telepon ke format internasional; validasi awal (tanpa jaringan)."""
@@ -207,14 +105,29 @@ class LoginResult:
     next: str
 
 
-def _default_client_factory(
-    session_name: str, api_id: int, api_hash: str, workdir: Path
-) -> Any:
+@dataclass(frozen=True)
+class TelegramCredentials:
+    """Kredensial + nama sesi, satu nilai agar tidak tertukar saat diteruskan."""
+
+    api_id: int
+    api_hash: str
+    session_name: str
+
+    @property
+    def ready(self) -> bool:
+        return self.api_id > 0 and bool(self.api_hash)
+
+
+#: Pabrik klien Pyrogram tak-terautentikasi: `(kredensial, workdir)` → klien.
+ClientFactory = Callable[[TelegramCredentials, Path], Any]
+
+
+def default_client_factory(credentials: TelegramCredentials, workdir: Path) -> Any:
     """Bangun klien Pyrogram tak-terautentikasi (tanpa nomor telepon)."""
     return Client(
-        session_name,
-        api_id=api_id,
-        api_hash=api_hash,
+        credentials.session_name,
+        api_id=credentials.api_id,
+        api_hash=credentials.api_hash,
         workdir=str(workdir),
         no_updates=True,
     )
@@ -232,42 +145,50 @@ class TelegramLoginService:
         redactor: SecretRedactor | None = None,
         client_factory: ClientFactory | None = None,
         flow_ttl: timedelta = LOGIN_FLOW_TTL,
+        telegram_store: TelegramStore | None = None,
     ) -> None:
-        self._db = db
-        self._store = store
+        self._store = telegram_store or TelegramStore(db, flow_ttl=flow_ttl)
+        self._settings = store
         self._data_dir = Path(data_dir)
         self._redactor = redactor
-        self._client_factory = client_factory or _default_client_factory
-        self._flow_ttl = flow_ttl
+        self._client_factory = client_factory or default_client_factory
+        # Hanya melindungi peta klien & kunci per-flow; TIDAK dipakai saat I/O.
+        self._clients_lock = asyncio.Lock()
         self._clients: dict[int, Any] = {}
-        self._lock = asyncio.Lock()
+        self._flow_locks: dict[int, asyncio.Lock] = {}
 
     # ------------------------------------------------------------- kredensial
 
-    async def _load_credentials(self) -> tuple[int | None, str, str]:
-        """(api_id, api_hash, session_name) apa adanya dari store."""
-        values = await self._store.load_values()
+    async def _load_credentials(self) -> TelegramCredentials | None:
+        """Kredensial apa adanya dari store; `None` bila `api_id` belum terisi."""
+        values = await self._settings.load_values()
         api_id = values.get("telegram_api_id")
-        api_hash = values.get("telegram_api_hash") or ""
-        session_name = str(values.get("telegram_session_name") or DEFAULT_SESSION_NAME)
-        return (api_id if isinstance(api_id, int) else None), str(api_hash), session_name
+        return TelegramCredentials(
+            api_id=api_id if isinstance(api_id, int) else 0,
+            api_hash=str(values.get("telegram_api_hash") or ""),
+            session_name=str(
+                values.get("telegram_session_name") or DEFAULT_SESSION_NAME
+            ),
+        )
 
-    async def credentials(self) -> tuple[int, str, str]:
+    async def credentials(self) -> TelegramCredentials:
         """Kredensial siap pakai; galat `api_credentials_missing` bila belum lengkap."""
-        api_id, api_hash, session_name = await self._load_credentials()
-        if not api_id or api_id <= 0 or not api_hash:
+        credentials = await self._load_credentials()
+        if credentials is None or not credentials.ready:
             raise TelegramLoginError("api_credentials_missing", status_code=409)
-        return api_id, api_hash, session_name
+        return credentials
 
     async def credentials_ready(self) -> bool:
         """True bila kredensial Telegram sudah terisi (tanpa melempar galat)."""
-        api_id, api_hash, _name = await self._load_credentials()
-        return bool(api_id and api_id > 0 and api_hash)
+        credentials = await self._load_credentials()
+        return bool(credentials and credentials.ready)
 
     async def session_name(self) -> str:
         """Nama sesi yang sedang dipakai (dari setting, default bila kosong)."""
-        _api_id, _api_hash, session_name = await self._load_credentials()
-        return session_name or DEFAULT_SESSION_NAME
+        credentials = await self._load_credentials()
+        return (credentials.session_name if credentials else DEFAULT_SESSION_NAME) or (
+            DEFAULT_SESSION_NAME
+        )
 
     def session_path(self, session_name: str) -> Path:
         """Lokasi berkas sesi Pyrogram untuk nama sesi tertentu."""
@@ -282,43 +203,39 @@ class TelegramLoginService:
     async def start(self, phone: str) -> LoginStart:
         """Kirim kode OTP ke `phone` lalu buka flow login baru."""
         normalized = normalize_phone(phone)
-        api_id, api_hash, session_name = await self.credentials()
+        credentials = await self.credentials()
 
         # Keputusan produk: satu akun aktif, ganti akun = logout lalu login lagi.
-        # Menimpanya lewat login baru risks membatalkan sesi yang sedang dipakai.
-        account = await self._load_account()
+        # Menimpanya lewat login baru berisiko membatalkan sesi yang sedang dipakai.
+        account = await self._store.load_account()
         if account.status == ACCOUNT_LOGGED_IN:
             raise TelegramLoginError("already_logged_in", status_code=409)
 
-        async with self._lock:
-            # Single-tenant: satu admin, satu alur. Flow lama dibuang agar tidak
-            # ada dua klien Pyrogram menulis berkas sesi yang sama.
-            await self._discard_all_flows()
-            client = self._build_client(session_name, api_id, api_hash)
-            try:
-                await client.start()
-                sent = await client.send_code(normalized)
-            except Exception as exc:  # noqa: BLE001 - semua galat dipetakan ke kode
-                await self._close_client(client)
-                raise await self._record_failure(exc) from exc
+        # Single-tenant: satu admin, satu alur. Flow lama dibuang agar tidak ada
+        # dua klien Pyrogram menulis berkas sesi yang sama.
+        await self._discard_all_flows()
+        client = self._build_client(credentials)
+        try:
+            await client.start()
+            sent = await client.send_code(normalized)
+        except Exception as exc:  # noqa: BLE001 - semua galat dipetakan ke kode
+            await self._close_client(client)
+            raise await self._record_failure(exc) from exc
 
-            code_hash = str(getattr(sent, "phone_code_hash", "") or "")
-            if not code_hash:
-                await self._close_client(client)
-                raise await self._record_failure(RuntimeError("phone_code_hash kosong"))
-            self._remember_secret(code_hash)
-
-            flow_id = await self._create_flow(normalized, code_hash)
-            self._clients[flow_id] = client
-            await self._set_account_status(ACCOUNT_LOGGED_OUT)
-
+        # Redaksi diaktifkan lebih dulu: `phone_code_hash` ikut masuk query SQL,
+        # dan driver SQLite menuliskan nilainya di log level DEBUG.
+        self._remember_secret(str(sent.phone_code_hash))
+        flow_id = await self._store.create_flow(normalized, str(sent.phone_code_hash))
+        await self._remember_client(flow_id, client)
         log.info("Kode login Telegram dikirim (flow=%s).", flow_id)
         return LoginStart(flow_id=flow_id, next=NEXT_CODE)
 
     async def verify(self, flow_id: int, code: str) -> LoginResult:
         """Verifikasi kode OTP; mungkin ada langkah password 2FA berikutnya."""
         normalized = normalize_code(code)
-        async with self._lock:
+        # Kunci per-flow: dua verify untuk flow sama tidak boleh saling menimpa,
+        # namun tidak memblokir flow/logout yang lain.
+        async with self._flow_lock(flow_id):
             flow = await self._load_flow(flow_id)
             self._remember_secret(normalized)
             client = await self._client_for_flow(flow)
@@ -328,8 +245,8 @@ class TelegramLoginService:
                     normalized,
                     phone_code_hash=flow.phone_code_hash,
                 )
-            except _SESSION_PASSWORD_EXCEPTIONS:
-                await self._update_flow_status(flow_id, FLOW_AWAITING_PASSWORD)
+            except SessionPasswordNeeded:
+                await self._store.set_flow_status(flow_id, FLOW_AWAITING_PASSWORD)
                 log.info("Login Telegram butuh password 2FA (flow=%s).", flow_id)
                 return LoginResult(next=NEXT_PASSWORD)
             except Exception as exc:  # noqa: BLE001 - semua galat dipetakan ke kode
@@ -343,7 +260,7 @@ class TelegramLoginService:
         """Kirim password 2FA untuk flow yang sedang menunggu (`awaiting_password`)."""
         if not password.strip():
             raise TelegramLoginError("password_invalid")
-        async with self._lock:
+        async with self._flow_lock(flow_id):
             flow = await self._load_flow(flow_id)
             if flow.status != FLOW_AWAITING_PASSWORD:
                 raise TelegramLoginError("flow_not_found", status_code=404)
@@ -359,26 +276,24 @@ class TelegramLoginService:
 
     async def cancel(self, flow_id: int) -> None:
         """Buang satu flow yang belum selesai."""
-        async with self._lock:
-            await self._load_flow(flow_id)
-            client = self._clients.pop(flow_id, None)
-            if client is not None:
-                await self._close_client(client)
-            await self._delete_flow(flow_id)
+        await self._load_flow(flow_id)
+        client = await self._forget_client(flow_id)
+        if client is not None:
+            await self._close_client(client)
+        await self._store.delete_flow(flow_id)
         log.info("Alur login Telegram dibatalkan (flow=%s).", flow_id)
 
     async def cleanup_expired(self) -> int:
         """Hapus `login_flow` kedaluwarsa; kembalikan jumlah yang dibuang."""
-        async with self._lock:
-            expired = await self._expired_flow_ids()
-            for flow_id in expired:
-                client = self._clients.pop(flow_id, None)
-                if client is not None:
-                    await self._close_client(client)
-                await self._delete_flow(flow_id)
-            if expired:
-                log.info("%d alur login Telegram kedaluwarsa dibersihkan.", len(expired))
-            return len(expired)
+        expired = await self._store.expired_flow_ids()
+        for flow_id in expired:
+            client = await self._forget_client(flow_id)
+            if client is not None:
+                await self._close_client(client)
+            await self._store.delete_flow(flow_id)
+        if expired:
+            log.info("%d alur login Telegram kedaluwarsa dibersihkan.", len(expired))
+        return len(expired)
 
     async def cleanup_loop(self, interval: float = CLEANUP_INTERVAL_SEC) -> None:
         """Bersihkan flow kedaluwarsa secara berkala sampai task dibatalkan."""
@@ -395,19 +310,20 @@ class TelegramLoginService:
 
     async def logout(self) -> dict[str, Any]:
         """Akhiri sesi di sisi Telegram lalu hapus seluruh berkas `*.session`."""
-        remote_error: TelegramLoginError | None = None
-        removed = 0
-        async with self._lock:
-            account = await self._load_account()
-            session_name = str(account.session_name or await self.session_name())
-            await self._discard_all_flows()
+        account = await self._store.load_account()
+        session_name = str(account.session_name or await self.session_name())
+        if account.status != ACCOUNT_LOGGED_IN and not self.has_session_file(session_name):
+            # Tidak ada yang bisa logout: jangan sentuh Telegram dan jangan
+            # simpan `last_error` untuk kondisi yang memang belum pernah login.
+            raise TelegramLoginError("account_not_logged_in", status_code=409)
 
-            remote_error = await self._remote_logout(session_name)
-            removed = self._remove_session_files()
-            await self._set_account_logged_out(session_name)
-            if remote_error is not None:
-                # Berkas lokal sudah hilang; catat saja kegagalan sisi Telegram.
-                await self._set_last_error(remote_error.code)
+        await self._discard_all_flows()
+        remote_error = await self._remote_logout(session_name)
+        removed = self._remove_session_files()
+        await self._store.mark_logged_out(session_name)
+        if remote_error is not None:
+            # Berkas lokal sudah hilang; catat saja kegagalan sisi Telegram.
+            await self._store.set_last_error(remote_error.code)
 
         if remote_error is not None:
             log.warning(
@@ -423,20 +339,25 @@ class TelegramLoginService:
     # ----------------------------------------------------------------- status
 
     async def status(self) -> dict[str, Any]:
-        """Ringkasan akun untuk UI (spesifikasi §6.4)."""
-        account = await self._load_account()
-        api_id, api_hash, session_name = await self._load_credentials()
-        credentials_ready = bool(api_id and api_id > 0 and api_hash)
+        """Ringkasan akun untuk UI (spesifikasi §6.4).
+
+        **Hanya baca.** Status di database tidak dikoreksi di sini; koreksi
+        terjadi saat admin logout atau login berikutnya.
+        """
+        account = await self._store.load_account()
+        credentials = await self._load_credentials()
+        credentials_ready = bool(credentials and credentials.ready)
+        session_name = credentials.session_name if credentials else DEFAULT_SESSION_NAME
 
         status = str(account.status or ACCOUNT_NOT_CONFIGURED)
         # Q10: berkas sesi yang relevan adalah milik sesi yang dipakai saat login.
         # Bila `telegram_session_name` diganti, akun tetap `logged_in` tetapi ditandai
-        # `session_mismatch` sehingga UI menawarkan login ulang.
+        # `session_mismatch` sehingga UI menawarkan logout lalu login ulang.
         active_session = str(account.session_name or session_name)
         if status == ACCOUNT_LOGGED_IN and not self.has_session_file(active_session):
-            # Sesi hilang di disk (mis. volume di-reset): jangan tampilkan "login".
+            # Sesi hilang di disk (mis. volume di-reset): tampilkan "belum login"
+            # tanpa menulis apa pun — endpoint ini bersifat baca.
             status = ACCOUNT_LOGGED_OUT
-            await self._safely_set_logged_out()
         if not credentials_ready and status != ACCOUNT_LOGGED_IN:
             status = ACCOUNT_NOT_CONFIGURED
         elif status == ACCOUNT_NOT_CONFIGURED and credentials_ready:
@@ -462,155 +383,44 @@ class TelegramLoginService:
             "credentials_configured": credentials_ready,
             "session_name": session_name,
             "session_mismatch": bool(
-                status == ACCOUNT_LOGGED_IN and account.session_name not in (None, "", session_name)
+                status == ACCOUNT_LOGGED_IN
+                and account.session_name not in (None, "", session_name)
             ),
         }
 
-    # --------------------------------------------------------------- database
-
-    async def _load_account(self) -> models.TelegramAccount:
-        """Baris akun tunggal; dibuat dengan status default bila belum ada."""
-        async with self._db.session() as session:
-            row = await session.get(models.TelegramAccount, ACCOUNT_ROW_ID)
-            if row is not None:
-                return row
-            row = models.TelegramAccount(id=ACCOUNT_ROW_ID, status=ACCOUNT_NOT_CONFIGURED)
-            session.add(row)
-        return row
-
-    async def _update_account(self, **values: Any) -> None:
-        """Tulis status akun dalam transaksi terpisah (tidak bergantung handler)."""
-        async with self._db.session() as session:
-            row = await session.get(models.TelegramAccount, ACCOUNT_ROW_ID)
-            if row is None:
-                row = models.TelegramAccount(
-                    id=ACCOUNT_ROW_ID, status=ACCOUNT_NOT_CONFIGURED
-                )
-                session.add(row)
-            for key, value in values.items():
-                setattr(row, key, value)
-
-    async def _set_account_status(self, status: str) -> None:
-        await self._update_account(status=status, last_error=None)
-
-    async def _set_account_logged_out(self, session_name: str) -> None:
-        await self._update_account(
-            status=ACCOUNT_LOGGED_OUT,
-            tg_user_id=None,
-            tg_username=None,
-            tg_first_name=None,
-            logged_in_at=None,
-            session_name=session_name,
-            last_error=None,
-        )
-
-    async def _set_last_error(self, error_code: str) -> None:
-        """Simpan kode galat terakhir tanpa mengubah status akun."""
-        async with self._db.session() as session:
-            row = await session.get(models.TelegramAccount, ACCOUNT_ROW_ID)
-            if row is None:
-                session.add(
-                    models.TelegramAccount(
-                        id=ACCOUNT_ROW_ID,
-                        status=ACCOUNT_NOT_CONFIGURED,
-                        last_error=error_code,
-                    )
-                )
-                return
-            row.last_error = error_code
-
-    async def _safely_set_logged_out(self) -> None:
-        """Koreksi status saat endpoint status dipanggil (tidak boleh menggagalkan GET)."""
-        try:
-            await self._update_account(status=ACCOUNT_LOGGED_OUT, last_error=None)
-        except Exception:  # noqa: BLE001 - koreksi status bersifat opsional
-            log.debug("Gagal mengoreksi status akun menjadi logged_out.", exc_info=True)
-
-    async def _create_flow(self, phone: str, phone_code_hash: str) -> int:
-        now = utcnow()
-        async with self._db.session() as session:
-            flow = models.LoginFlow(
-                phone=phone,
-                phone_code_hash=phone_code_hash,
-                status=FLOW_CODE_SENT,
-                created_at=now,
-                expires_at=now + self._flow_ttl,
-            )
-            session.add(flow)
-            await session.flush()
-            return int(flow.id)
-
-    async def _load_flow(self, flow_id: int) -> models.LoginFlow:
-        """Ambil flow yang masih hidup; galat bila tidak ada atau kedaluwarsa."""
-        async with self._db.session() as session:
-            flow = await session.get(models.LoginFlow, flow_id)
-            if flow is None:
-                raise TelegramLoginError("flow_not_found", status_code=404)
-            if flow.expires_at <= utcnow():
-                raise TelegramLoginError("flow_expired", status_code=410)
-            return flow
-
-    async def _update_flow_status(self, flow_id: int, status: str) -> None:
-        async with self._db.session() as session:
-            flow = await session.get(models.LoginFlow, flow_id)
-            if flow is not None:
-                flow.status = status
-
-    async def _delete_flow(self, flow_id: int) -> None:
-        async with self._db.session() as session:
-            await session.execute(
-                delete(models.LoginFlow).where(models.LoginFlow.id == flow_id)
-            )
-
-    async def _expired_flow_ids(self) -> list[int]:
-        async with self._db.session() as session:
-            rows = (
-                (
-                    await session.execute(
-                        select(models.LoginFlow.id).where(
-                            models.LoginFlow.expires_at <= utcnow()
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            return [int(row) for row in rows]
-
-    async def _discard_all_flows(self) -> int:
-        """Tutup semua klien flow dan hapus barisnya (single-tenant)."""
-        clients = list(self._clients.values())
-        self._clients.clear()
-        for client in clients:
-            await self._close_client(client)
-        async with self._db.session() as session:
-            result = await session.execute(delete(models.LoginFlow))
-            return int(cast("CursorResult[Any]", result).rowcount or 0)
-
     # ------------------------------------------------------------------ klien
 
-    def _build_client(self, session_name: str, api_id: int, api_hash: str) -> Any:
+    def _build_client(self, credentials: TelegramCredentials) -> Any:
         """Buat klien login (workdir = direktori data, Q10)."""
         self._data_dir.mkdir(parents=True, exist_ok=True)
-        self._remember_secret(api_hash)
-        return self._client_factory(session_name, api_id, api_hash, self._data_dir)
+        self._remember_secret(credentials.api_hash)
+        return self._client_factory(credentials, self._data_dir)
 
     async def _client_for_flow(self, flow: models.LoginFlow) -> Any:
         """Klien untuk flow; bangun ulang bila proses web sempat restart."""
         flow_id = int(flow.id)
-        client = self._clients.get(flow_id)
+        async with self._clients_lock:
+            client = self._clients.get(flow_id)
         if client is not None:
             return client
 
-        api_id, api_hash, session_name = await self.credentials()
-        client = self._build_client(session_name, api_id, api_hash)
+        credentials = await self.credentials()
+        client = self._build_client(credentials)
         try:
             await client.start()
         except Exception as exc:  # noqa: BLE001 - semua galat dipetakan ke kode
             await self._close_client(client)
             raise await self._record_failure(exc) from exc
-        self._clients[flow_id] = client
+        await self._remember_client(flow_id, client)
         return client
+
+    async def _remember_client(self, flow_id: int, client: Any) -> None:
+        async with self._clients_lock:
+            self._clients[flow_id] = client
+
+    async def _forget_client(self, flow_id: int) -> Any:
+        async with self._clients_lock:
+            return self._clients.pop(flow_id, None)
 
     @staticmethod
     async def _close_client(client: Any) -> None:
@@ -635,39 +445,70 @@ class TelegramLoginService:
                 log.warning("Gagal menghapus berkas sesi '%s'.", path.name)
         return removed
 
+    async def _discard_all_flows(self) -> None:
+        """Tutup semua klien flow dan hapus barisnya (single-tenant)."""
+        async with self._clients_lock:
+            clients = list(self._clients.values())
+            self._clients.clear()
+            self._flow_locks.clear()
+        for client in clients:
+            await self._close_client(client)
+        await self._store.delete_all_flows()
+
     # ----------------------------------------------------------------- helpers
 
+    def _flow_lock(self, flow_id: int) -> asyncio.Lock:
+        """Kunci per-flow; dibuat di luar `clients_lock` agar tidak mengunci I/O."""
+        return self._flow_locks.setdefault(flow_id, asyncio.Lock())
+
+    async def _load_flow(self, flow_id: int) -> models.LoginFlow:
+        """Ambil flow; terjemahkan kegagalan store menjadi kode galat yang stabil."""
+        try:
+            return await self._store.load_flow(flow_id)
+        except FlowExpired:
+            raise TelegramLoginError("flow_expired", status_code=410) from None
+        except FlowNotFound:
+            raise TelegramLoginError("flow_not_found", status_code=404) from None
+
     async def _complete_login(self, client: Any, flow: models.LoginFlow) -> None:
-        """Simpan hasil login ke `telegram_account`, lalu lepas berkas sesi."""
+        """Simpan hasil login ke akun, lalu lepas klien & alurnya.
+
+        Pyrogram menulis berkas sesi **saat** otorisasi berhasil. Karena itu,
+        kebuntuan pada `get_me()` tidak boleh meninggalkan alur menggantung:
+        akun tetap ditandai login (profil boleh kosong) dan alur selalu dibuang.
+        """
         session_name = await self.session_name()
+        me: Any = None
         try:
             me = await client.get_me()
+        except Exception as exc:  # noqa: BLE001 - profil saja yang gagal diambil
+            log.warning(
+                "Gagal mengambil profil Telegram setelah login (flow=%s): %s",
+                int(flow.id),
+                exc.__class__.__name__,
+            )
         finally:
-            # Lepaskan berkas sesi agar runtime bisa membukanya nanti.
             await self._close_client(client)
-            self._clients.pop(int(flow.id), None)
+            await self._forget_client(int(flow.id))
 
-        await self._update_account(
+        await self._store.mark_logged_in(
             phone=flow.phone,
-            tg_user_id=int(getattr(me, "id", 0) or 0),
-            tg_username=getattr(me, "username", None),
-            tg_first_name=getattr(me, "first_name", None),
             session_name=session_name,
-            status=ACCOUNT_LOGGED_IN,
-            last_error=None,
-            logged_in_at=utcnow(),
+            user_id=int(getattr(me, "id", 0) or 0) if me is not None else None,
+            username=getattr(me, "username", None),
+            first_name=getattr(me, "first_name", None),
         )
-        await self._delete_flow(int(flow.id))
+        await self._store.delete_flow(int(flow.id))
 
     async def _remote_logout(self, session_name: str) -> TelegramLoginError | None:
         """Panggil `log_out` bila kredensial ada; kegagalan tidak menghalangi lokal."""
         try:
-            api_id, api_hash, _name = await self.credentials()
+            credentials = await self.credentials()
         except TelegramLoginError:
             log.info("Kredensial Telegram kosong; logout dijalankan secara lokal.")
             return None
 
-        client = self._build_client(session_name, api_id, api_hash)
+        client = self._build_client(credentials)
         try:
             await client.start()
             await client.log_out()
@@ -680,10 +521,10 @@ class TelegramLoginService:
     async def _record_failure(self, exc: BaseException) -> TelegramLoginError:
         """Petakan exception, catat ke akun, lalu kembalikan untuk di-raise."""
         error = exc if isinstance(exc, TelegramLoginError) else map_exception(exc)
-        if error.code in _ACCOUNT_BREAKING_CODES:
-            await self._update_account(status=ACCOUNT_ERROR, last_error=error.code)
+        if error.code in ACCOUNT_BREAKING_CODES:
+            await self._store.update_account(status=ACCOUNT_ERROR, last_error=error.code)
         else:
-            await self._set_last_error(error.code)
+            await self._store.set_last_error(error.code)
         # Hanya kode stabil yang dicatat; pesan mentah bisa memuat detail sensitif.
         log.warning("Login Telegram gagal: %s", error.code)
         return error

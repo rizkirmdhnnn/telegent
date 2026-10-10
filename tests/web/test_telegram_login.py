@@ -11,7 +11,6 @@ import logging
 from collections.abc import Iterator
 from datetime import timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -24,20 +23,20 @@ from pyrogram.errors import (
     SessionPasswordNeeded,
 )
 
+from web_helpers import SECRET_CODE_HASH, FakeTelegram, FakeTelegramClient
+
 from telegent.web.db import models
 from telegent.web.db.base import Database, utcnow
 from telegent.web.events import EventBus
 from telegent.web.log_stream import BusLogHandler, LogRingBuffer, SecretRedactor
 from telegent.web.settings_store import SettingsStore
-from telegent.web.telegram_login import (
+from telegent.web.telegram_errors import TelegramLoginError, map_exception
+from telegent.web.telegram_login import TelegramLoginService, normalize_phone
+from telegent.web.telegram_store import (
     ACCOUNT_LOGGED_IN,
     ACCOUNT_NOT_CONFIGURED,
     FLOW_AWAITING_PASSWORD,
     FLOW_CODE_SENT,
-    TelegramLoginError,
-    TelegramLoginService,
-    map_exception,
-    normalize_phone,
 )
 
 _API_ID = 12345678
@@ -46,91 +45,6 @@ _PHONE = "+6281234567890"
 _CODE = "54321"
 _WRONG_CODE = "987654"
 _2FA_PASSWORD = "rahasia-super-2fa"
-
-#: Nilai sensitif yang tidak boleh muncul di log mana pun.
-SECRET_CODE_HASH = "hash-rahasia-yang-panjang-sekali"
-
-
-# ------------------------------------------------------------------ fake pyrogram
-
-
-class FakeTelegram:
-    """Pabrik klien Pyrogram palsu yang digerakkan skenario per nomor telepon."""
-
-    #: Skenario aktif: `sign_in_error` / `password_error` yang harus dilempar.
-    sign_in_error: BaseException | None = None
-    password_error: BaseException | None = None
-    send_code_error: BaseException | None = None
-    me: Any = SimpleNamespace(id=5550001, username="telegent_bot", first_name="Telegent")
-    instances: list["FakeClient"] = []
-
-    @classmethod
-    def reset(cls) -> None:
-        cls.sign_in_error = None
-        cls.password_error = None
-        cls.send_code_error = None
-        cls.instances.clear()
-
-    @classmethod
-    def factory(cls, name: str, api_id: int, api_hash: str, workdir: Path) -> "FakeClient":
-        return FakeClient(name=name, api_id=api_id, api_hash=api_hash, workdir=workdir)
-
-
-class FakeClient:
-    """Klien Pyrogram minimal: hanya operasi yang dipakai layanan login."""
-
-    def __init__(self, *, name: str, api_id: int, api_hash: str, workdir: Path) -> None:
-        self.name = name
-        self.api_id = api_id
-        self.api_hash = api_hash
-        self.workdir = workdir
-        self.started = False
-        self.stopped = False
-        self.logged_out = False
-        self.signed_in_with: tuple[str, str, str | None] | None = None
-        self.checked_password: str | None = None
-        # Pyrogram membuat berkas sesi begitu klien dijalankan.
-        (workdir / f"{name}.session").write_bytes(b"fake-session")
-        FakeTelegram.instances.append(self)
-
-    async def start(self) -> None:
-        self.started = True
-
-    async def stop(self) -> None:
-        self.stopped = True
-
-    async def send_code(self, phone: str) -> Any:
-        if FakeTelegram.send_code_error is not None:
-            raise FakeTelegram.send_code_error
-        self.sent_to = phone
-        return SimpleNamespace(phone_code_hash=SECRET_CODE_HASH)
-
-    async def sign_in(self, phone: str, code: str, *, phone_code_hash: str | None = None) -> Any:
-        self.signed_in_with = (phone, code, phone_code_hash)
-        if FakeTelegram.sign_in_error is not None:
-            raise FakeTelegram.sign_in_error
-        return FakeTelegram.me
-
-    async def check_password(self, password: str) -> Any:
-        self.checked_password = password
-        if FakeTelegram.password_error is not None:
-            raise FakeTelegram.password_error
-        return FakeTelegram.me
-
-    async def get_me(self) -> Any:
-        return FakeTelegram.me
-
-    async def log_out(self) -> None:
-        self.logged_out = True
-
-
-@pytest.fixture(autouse=True)
-def fake_telegram() -> Iterator[None]:
-    """Reset skenario fake Pyrogram sebelum & sesudah setiap pengujian."""
-    FakeTelegram.reset()
-    yield
-    FakeTelegram.reset()
-
 
 # --------------------------------------------------------------------- fixtures
 
@@ -278,8 +192,8 @@ async def test_password_salah_menolak_tanpa_mengganti_status(
         (PhoneCodeExpired(), "code_expired"),
         (PasswordHashInvalid(), "password_invalid"),
         (FloodWait(value=42), "flood_wait"),
-        (ConnectionError("jaringan mati"), "network_error"),
-        (TimeoutError("timeout"), "network_error"),
+        (ConnectionError("jaringan mati"), "telegram_unreachable"),
+        (TimeoutError("timeout"), "telegram_unreachable"),
         (RuntimeError("aneh"), "telegram_error"),
     ],
 )
@@ -510,13 +424,13 @@ async def test_logout_tetap_berhasil_walau_gagal_di_sisi_telegram(
     start = await service.start(_PHONE)
     await service.verify(start.flow_id, _CODE)
 
-    async def failing_log_out(self: FakeClient) -> None:
+    async def failing_log_out(self: FakeTelegramClient) -> None:
         raise ConnectionError("tidak terjangkau")
 
-    monkeypatch.setattr(FakeClient, "log_out", failing_log_out)
+    monkeypatch.setattr(FakeTelegramClient, "log_out", failing_log_out)
     result = await service.logout()
 
-    assert result["remote_error"] == "network_error"
+    assert result["remote_error"] == "telegram_unreachable"
     assert result["removed_session_files"] >= 1
     assert not service.session_path("userbot_session").exists()
     status = await service.status()

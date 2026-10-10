@@ -82,14 +82,22 @@ class LoginFlow(Base):
 
     __tablename__ = "login_flow"
 
-    # `autoincrement` → SQLite memakai AUTOINCREMENT sehingga id tidak pernah
-    # dipakai ulang setelah flow dihapus; `flow_id` dari API selalu unik.
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # `sqlite_autoincrement` (bukan `autoincrement`) agar DDL yang dihasilkan
+    # benar-benar `PRIMARY KEY AUTOINCREMENT` — sama dengan migrasi, sehingga
+    # `metadata.create_all` di pengujian tidak menyimpang dari skema produksi.
+    # Konsekuensinya: id tidak pernah dipakai ulang setelah flow dihapus, jadi
+    # `flow_id` dari API tidak pernah menunjuk alur yang salah.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     phone: Mapped[str] = mapped_column(String(32), nullable=False)
     phone_code_hash: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="code_sent", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("ix_login_flow_expires_at", "expires_at"),
+        {"sqlite_autoincrement": True},
+    )
 
     __table_args__ = (Index("ix_login_flow_expires_at", "expires_at"),)
 

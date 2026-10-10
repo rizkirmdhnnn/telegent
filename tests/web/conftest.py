@@ -9,6 +9,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from web_helpers import FakeTelegram
+
 from telegent.web.app import create_app
 from telegent.web.bootstrap import BootstrapConfig, load_bootstrap
 from telegent.web.crypto import SecretCipher
@@ -118,3 +120,13 @@ async def database(db_url: str) -> AsyncIterator[Database]:
 async def store(database: Database, tmp_path: Path) -> SettingsStore:
     """SettingsStore dengan kunci enkripsi terisolasi."""
     return SettingsStore(database, SecretCipher.for_data_dir(tmp_path / "keys"))
+
+@pytest.fixture(autouse=True)
+def _reset_fake_telegram():
+    """Pastikan skenario fake Pyrogram bersih di setiap tes web.
+
+    Diletakkan di conftest agar tidak bocor antar modul tes.
+    """
+    FakeTelegram.reset()
+    yield
+    FakeTelegram.reset()

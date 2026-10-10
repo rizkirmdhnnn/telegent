@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from telegent.web.schemas.base import SimpleOkResponse
 
 #: Langkah setelah `login/start` (hanya kode yang dipakai; `password` disediakan
 #: agar kontrak tidak berubah bila alur(authorisasi) berkembang).
@@ -52,9 +54,3 @@ class LoginVerifyResponse(BaseModel):
     """Respons `login/verify`: langkah berikutnya (`password` atau `done`)."""
 
     next: LoginNext
-
-
-class SimpleOkResponse(BaseModel):
-    """Respons standar `{ok: true}`."""
-
-    ok: bool = True

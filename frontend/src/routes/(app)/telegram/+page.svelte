@@ -49,6 +49,7 @@
 	/** Kunci i18n pesan sukses (bukan teks) agar mengikuti bahasa aktif. */
 	let actionMessageKey = $state('');
 	let logoutBusy = $state(false);
+	let switchBusy = $state(false);
 	let startBusy = $state(false);
 
 	const loggedIn = $derived(status?.status === 'logged_in');
@@ -101,6 +102,25 @@
 	}
 
 	onMount(loadStatus);
+
+	/**
+	 * Ganti akun: logout dulu (server menolak `login/start` selama masih login),
+	 * lalu alur baru langsung dibuka. Satu klik, bukan dua langkah terpisah.
+	 */
+	async function switchAccount() {
+		switchBusy = true;
+		actionError = null;
+		actionMessageKey = '';
+		try {
+			await apiFetch('/telegram/logout', { method: 'POST' });
+			await loadStatus();
+			actionMessageKey = 'telegram.switch_account_ready';
+		} catch (err) {
+			actionError = toLocalized(err);
+		} finally {
+			switchBusy = false;
+		}
+	}
 
 	async function logout() {
 		logoutBusy = true;
@@ -188,8 +208,13 @@
 		{/if}
 
 		{#if status?.session_mismatch}
-			<div class="mt-3 rounded-lg border border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-				{tParams('telegram.session_mismatch_desc', { current: status?.session_name ?? '' })}
+			<div
+				class="mt-3 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-800 sm:flex-row sm:items-center sm:justify-between dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+			>
+				<span>{tParams('telegram.session_mismatch_desc', { current: status?.session_name ?? '' })}</span>
+				<Button variant="outline" size="sm" loading={switchBusy} onclick={switchAccount}>
+					{t('telegram.switch_account')}
+				</Button>
 			</div>
 		{/if}
 

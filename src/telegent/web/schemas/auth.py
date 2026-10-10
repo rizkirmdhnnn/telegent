@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from telegent.web.schemas.base import SimpleOkResponse
+
 
 class SetupStatus(BaseModel):
     needs_setup: bool
@@ -20,8 +22,9 @@ class LoginRequest(BaseModel):
     totp: str | None = Field(default=None, max_length=16)
 
 
-class MessageResponse(BaseModel):
-    ok: bool = True
+#: Bentuk sama dengan `SimpleOkResponse`; dipakai sebagai alias agar endpoint
+#: auth punya nama domain yang jelas.
+MessageResponse = SimpleOkResponse
 
 
 class MeResponse(BaseModel):

@@ -20,7 +20,10 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # SQLite tidak mendukung ubah AUTOINCREMENT secara in-place: tabel dibuat
-    # ulang oleh mode batch Alembic.
+    # ulang oleh mode batch Alembic. `alter_column('status', ...)` di bawah
+    # sengaja tidak mengubah apa pun — pemanggilan itu hanya untuk memaksa
+    # batch mode membangun ulang tabel dengan `table_kwargs` yang diberikan.
+    # Jangan dihapus: tanpa pemanggilan ini AUTOINCREMENT tidak terpasang.
     with op.batch_alter_table(
         'login_flow', table_kwargs={'sqlite_autoincrement': True}
     ) as batch_op:

@@ -8,6 +8,8 @@ tidak pernah masuk `before`/`after`.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, cast
 
 from fastapi import APIRouter, Request
@@ -32,7 +34,7 @@ from telegent.web.schemas.telegram import (
     LoginVerifyResponse,
     SimpleOkResponse,
 )
-from telegent.web.telegram_login import TelegramLoginError
+from telegent.web.telegram_errors import TelegramLoginError
 
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
@@ -45,8 +47,13 @@ def _client_ip(request: Request) -> str | None:
 
 
 def _ensure_bot_stopped(runtime: RuntimeController) -> None:
-    """Login/logout butuh berkas sesi yang tidak sedang dipakai bot."""
-    if runtime.state is RuntimeState.RUNNING or runtime.status().running:
+    """Login/logout butuh berkas sesi yang tidak sedang dipakai bot.
+
+    `status()` adalah sumber kebenaran tunggal; `state` hanya dibaca sebagai
+    project's ulang agar transisi STARTING/STOPPING ikut tertangkap.
+    """
+    status = runtime.status()
+    if status.running or runtime.state in (RuntimeState.RUNNING, RuntimeState.STARTING):
         raise APIError(
             409,
             "bot_running",
@@ -82,12 +89,38 @@ async def _audit(
     )
 
 
+@asynccontextmanager
+async def _login_step(
+    db: DatabaseDep,
+    actor: str,
+    step: str,
+    *,
+    ip: str | None,
+    flow_id: int | None = None,
+    before: Any = None,
+) -> AsyncIterator[None]:
+    """Konteks satu langkah login: catat audit lalu teruskan, atau catat galat & lempar.
+
+    Menyatukan pola `try/except → audit → raise` yang sebelumnya diulang di lima
+    handler; nilai yang ditulis ke audit hanya kode langkah dan kode galat.
+    """
+    detail: dict[str, Any] = {"step": step}
+    if flow_id is not None:
+        detail["flow_id"] = flow_id
+    try:
+        yield
+    except TelegramLoginError as exc:
+        await _audit(db, actor, "telegram.login", ip=ip, before=before, after={**detail, "error": exc.code})
+        raise _to_api_error(exc) from exc
+    await _audit(db, actor, "telegram.login", ip=ip, before=before, after=detail)
+
+
 @router.get("/status")
 async def telegram_status(
     admin: AdminDep,
     service: TelegramLoginDep,
 ) -> dict[str, Any]:
-    """Status akun Telegram saat ini (kredensial, sesi, dangalat terakhir)."""
+    """Status akun Telegram saat ini (kredensial, sesi, galat terakhir)."""
     del admin  # dependency mewajibkan sesi admin, bukan untuk datanya
     return await service.status()
 
@@ -103,16 +136,9 @@ async def login_start(
 ) -> LoginStartResponse:
     """Mulai alur login: kirim kode OTP ke nomor yang diberikan."""
     _ensure_bot_stopped(runtime)
-    ip = _client_ip(request)
-    try:
+    start: Any = None
+    async with _login_step(db, admin.username, "start", ip=_client_ip(request)):
         start = await service.start(payload.phone)
-    except TelegramLoginError as exc:
-        await _audit(db, admin.username, "telegram.login", ip=ip, after={"step": "start", "error": exc.code})
-        raise _to_api_error(exc) from exc
-
-    await _audit(
-        db, admin.username, "telegram.login", ip=ip, after={"step": "start", "flow_id": start.flow_id}
-    )
     return LoginStartResponse(flow_id=start.flow_id, next=cast(LoginNext, start.next))
 
 
@@ -127,26 +153,10 @@ async def login_verify(
 ) -> LoginVerifyResponse:
     """Verifikasi kode OTP; mungkin lanjut ke langkah password 2FA."""
     _ensure_bot_stopped(runtime)
-    ip = _client_ip(request)
-    try:
+    async with _login_step(
+        db, admin.username, "verify", ip=_client_ip(request), flow_id=payload.flow_id
+    ):
         result = await service.verify(payload.flow_id, payload.code)
-    except TelegramLoginError as exc:
-        await _audit(
-            db,
-            admin.username,
-            "telegram.login",
-            ip=ip,
-            after={"step": "verify", "flow_id": payload.flow_id, "error": exc.code},
-        )
-        raise _to_api_error(exc) from exc
-
-    await _audit(
-        db,
-        admin.username,
-        "telegram.login",
-        ip=ip,
-        after={"step": "verify", "flow_id": payload.flow_id, "next": result.next},
-    )
     return LoginVerifyResponse(next=cast(LoginNext, result.next))
 
 
@@ -161,26 +171,10 @@ async def login_password(
 ) -> SimpleOkResponse:
     """Kirim password 2FA untuk flow yang sedang menunggu."""
     _ensure_bot_stopped(runtime)
-    ip = _client_ip(request)
-    try:
+    async with _login_step(
+        db, admin.username, "password", ip=_client_ip(request), flow_id=payload.flow_id
+    ):
         await service.submit_password(payload.flow_id, payload.password)
-    except TelegramLoginError as exc:
-        await _audit(
-            db,
-            admin.username,
-            "telegram.login",
-            ip=ip,
-            after={"step": "password", "flow_id": payload.flow_id, "error": exc.code},
-        )
-        raise _to_api_error(exc) from exc
-
-    await _audit(
-        db,
-        admin.username,
-        "telegram.login",
-        ip=ip,
-        after={"step": "password", "flow_id": payload.flow_id, "next": "done"},
-    )
     return SimpleOkResponse(ok=True)
 
 
@@ -193,26 +187,10 @@ async def login_cancel(
     payload: LoginCancelRequest,
 ) -> SimpleOkResponse:
     """Batalkan alur login yang belum selesai."""
-    ip = _client_ip(request)
-    try:
+    async with _login_step(
+        db, admin.username, "cancel", ip=_client_ip(request), flow_id=payload.flow_id
+    ):
         await service.cancel(payload.flow_id)
-    except TelegramLoginError as exc:
-        await _audit(
-            db,
-            admin.username,
-            "telegram.login",
-            ip=ip,
-            after={"step": "cancel", "flow_id": payload.flow_id, "error": exc.code},
-        )
-        raise _to_api_error(exc) from exc
-
-    await _audit(
-        db,
-        admin.username,
-        "telegram.login",
-        ip=ip,
-        after={"step": "cancel", "flow_id": payload.flow_id},
-    )
     return SimpleOkResponse(ok=True)
 
 
@@ -240,6 +218,7 @@ async def telegram_logout(
             after={"error": exc.code},
         )
         raise _to_api_error(exc) from exc
+
 
     await _audit(
         db,

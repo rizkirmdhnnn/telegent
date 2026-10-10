@@ -279,10 +279,17 @@ Validasi Gemini: panggilan model ringan / cek format + opsi ping bila memungkink
 Semua mutasi memerlukan sesi admin + `X-CSRF-Token`; `GET /status` cukup sesi admin.
 `login/start` membatalkan flow yang masih terbuka (single-tenant, satu alur aktif).
 
+> **`GET /telegram/status` bersifat baca.** Status yang tidak lagi cocok dengan
+> berkas sesi di disk diturunkan di respons (`status` menjadi `logged_out`) tanpa
+> menulis ke database; koreksi disimpan saat admin logout atau login berikutnya.
+
 Penanganan error: `phone_invalid`, `code_invalid`, `code_expired`, `password_invalid`,
-`flood_wait`, `api_credentials_missing`, `network_error`, `session_invalid`,
+`flood_wait`, `api_credentials_missing`, `telegram_unreachable`, `session_invalid`,
 `telegram_error`, `flow_not_found`, `flow_expired`, `bot_running`, `already_logged_in`,
 `account_not_logged_in`.
+
+> **`telegram_unreachable`** dipakai khusus untuk kegagalan jaringan ke Telegram,
+> agar tidak bentrok dengan `network_error` yang berarti kegagalan jaringan ke API panel.
 
 > **`flood_wait`:** nilai tunggu dikirim pada `error.fields.retry_after` (dalam detik),
 > mengikuti amplop galat §6. Contoh: `{"error": {"code": "flood_wait", "fields":

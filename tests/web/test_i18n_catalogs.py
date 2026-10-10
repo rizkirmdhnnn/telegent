@@ -18,12 +18,12 @@ from typing import Any
 
 import pytest
 
-from telegent.web.telegram_login import (
+from telegent.web.telegram_errors import DEFAULT_MESSAGES
+from telegent.web.telegram_store import (
     ACCOUNT_ERROR,
     ACCOUNT_LOGGED_IN,
     ACCOUNT_LOGGED_OUT,
     ACCOUNT_NOT_CONFIGURED,
-    DEFAULT_MESSAGES,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

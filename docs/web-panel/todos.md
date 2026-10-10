@@ -38,10 +38,13 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 
 ## Fase 2 — Login Telegram
 
-> **Status: selesai** (branch `feat/web-panel-phase-2`). Login OTP + 2FA penuh dari
-> panel, status akun, logout, hitung mundur FloodWait, dan audit. `login/start` serta
-> `logout` ditolak (`bot_running`) selama runtime berjalan. Tombol "Jalankan bot"
-> memakai `POST /runtime/apply` yang sudah ada; tombol start/stop eksplisit
+> **Status: selesai + review diperbaiki** (branch `feat/web-panel-phase-2`). 320 tes hijau,
+> pyright & svelte-check bersih. `telegram_login` dipecah menjadi tiga modul:
+> `telegram_login` (orkestrasi klien), `telegram_store` (akses DB),
+> `telegram_errors` (katalog kode galat). Login OTP + 2FA penuh dari panel, status
+> akun, aksi "Ganti akun", logout, hitung mundur FloodWait, dan audit.
+> `login/start` serta `logout` ditolak (`bot_running`) selama runtime berjalan.
+> Tombol "Jalankan bot" memakai `POST /runtime/apply`; tombol start/stop eksplisit
 > menunggu tiket F1/F2.
 
 - [x] **D1** Layanan login Telegram programatik (send_code/verify/2FA, error) — L
