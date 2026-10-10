@@ -208,6 +208,18 @@ def test_cancel_mengosongkan_alur(client_with_telegram: TestClient) -> None:
     assert resp.json()["error"]["code"] == "flow_not_found"
 
 
+def test_login_kedua_ditolak_sampai_logout(client_with_telegram: TestClient) -> None:
+    _login(client_with_telegram)
+
+    resp = client_with_telegram.post(
+        "/api/telegram/login/start",
+        json={"phone": "+6289999999999"},
+        headers=_headers(client_with_telegram),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "already_logged_in"
+
+
 def test_mulai_ulang_membatalkan_flow_sebelumnya(client_with_telegram: TestClient) -> None:
     pertama = _start(client_with_telegram)
     kedua = _start(client_with_telegram)

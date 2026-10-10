@@ -38,9 +38,15 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 
 ## Fase 2 — Login Telegram
 
+> **Status: selesai** (branch `feat/web-panel-phase-2`). Login OTP + 2FA penuh dari
+> panel, status akun, logout, hitung mundur FloodWait, dan audit. `login/start` serta
+> `logout` ditolak (`bot_running`) selama runtime berjalan. Tombol "Jalankan bot"
+> memakai `POST /runtime/apply` yang sudah ada; tombol start/stop eksplisit
+> menunggu tiket F1/F2.
+
 - [x] **D1** Layanan login Telegram programatik (send_code/verify/2FA, error) — L
 - [x] **D2** API akun & login Telegram — M
-- [ ] **D3** UI login/akun Telegram (kode, password, status, hitung mundur) — M
+- [x] **D3** UI login/akun Telegram (kode, password, status, hitung mundur) — M
 
 ## Fase 3 — Pemantauan
 
@@ -65,12 +71,12 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 
 ## Checklist lintas-cutting
 
-- [ ] Redaksi secret di log & audit diuji khusus
-- [ ] Semua pesan error UI lewat kode i18n (id/en)
-- [ ] `uv run pytest -q` hijau
-- [ ] `uv run pyright src/telegent` hijau
-- [ ] `svelte-check` hijau
+- [x] Redaksi secret di log & audit diuji khusus
+- [x] Semua pesan error UI lewat kode i18n (id/en) — dijaga `tests/web/test_i18n_catalogs.py`
+- [x] `uv run pytest -q` hijau
+- [x] `uv run pyright src/telegent` hijau
+- [x] `svelte-check` hijau
 - [ ] Playwright hijau
-- [ ] `docs/web-panel` disinkronkan dengan implementasi
+- [x] `docs/web-panel` disinkronkan dengan implementasi
 - [ ] README + dokumentasi deployment diperbarui
 - [ ] Smoke test container bersih → panggilan nyata

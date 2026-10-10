@@ -112,6 +112,11 @@ Aksi **Terapkan & Restart** memanggil `RuntimeController.restart()`.
 
 **Perubahan kredensial juga menandai koneksi Gemini/Telegram perlu dibangun ulang.**
 
+> **Lokasi berkas sesi (penting):** `session_dir` bukan setting UI, tetapi selalu
+> dipaksa menunjuk `TELEGENT_DATA_DIR` saat `SettingsStore.build_settings()` menyusun
+> `Settings`. Tanpa itu, runtime akan mencari `*.session` di direktori kerja dan tidak
+> menemukan sesi yang dibuat melalui login web.
+
 ---
 
 ## 5. Model data

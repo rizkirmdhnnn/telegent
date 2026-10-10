@@ -24,14 +24,14 @@
 		runtime.disconnect();
 	});
 
-	// Halaman Fase berikutnya (Panggilan, Telegram, Log, Audit) belum ada;
+	// Halaman Fase berikutnya (Panggilan, Log, Audit) belum ada;
 	// tetap ditampilkan agar arsitektur informasi B3 utuh, dengan penanda "Segera".
 	const navItems = [
 		{ href: '/', label: 'nav.dashboard', icon: 'dashboard', soon: false },
 		{ href: '/calls', label: 'nav.calls', icon: 'phone', soon: true },
 		{ href: '/settings', label: 'nav.settings', icon: 'settings', soon: false },
 		{ href: '/credentials', label: 'nav.credentials', icon: 'key', soon: false },
-		{ href: '/telegram', label: 'nav.telegram', icon: 'send', soon: true },
+		{ href: '/telegram', label: 'nav.telegram', icon: 'send', soon: false },
 		{ href: '/tools', label: 'nav.tools', icon: 'wrench', soon: false },
 		{ href: '/logs', label: 'nav.logs', icon: 'terminal', soon: true },
 		{ href: '/audit', label: 'nav.audit', icon: 'shield', soon: true },

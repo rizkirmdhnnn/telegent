@@ -284,6 +284,12 @@ class TelegramLoginService:
         normalized = normalize_phone(phone)
         api_id, api_hash, session_name = await self.credentials()
 
+        # Keputusan produk: satu akun aktif, ganti akun = logout lalu login lagi.
+        # Menimpanya lewat login baru risks membatalkan sesi yang sedang dipakai.
+        account = await self._load_account()
+        if account.status == ACCOUNT_LOGGED_IN:
+            raise TelegramLoginError("already_logged_in", status_code=409)
+
         async with self._lock:
             # Single-tenant: satu admin, satu alur. Flow lama dibuang agar tidak
             # ada dua klien Pyrogram menulis berkas sesi yang sama.

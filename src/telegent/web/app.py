@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await upgrade_to_head_async(cfg.db_url)
     db = Database(cfg.db_url)
     cipher = SecretCipher.from_bootstrap(cfg)
-    store = SettingsStore(db, cipher)
+    store = SettingsStore(db, cipher, data_dir=cfg.data_dir)
     await store.import_env_once()
 
     app.state.db = db

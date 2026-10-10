@@ -327,6 +327,22 @@ async def test_nomor_tidak_valid_ditolak_sebelum_jaringan(
     assert FakeTelegram.instances == []
 
 
+async def test_login_baru_ditolak_sudah_login(service: TelegramLoginService) -> None:
+    """Ganti akun harus lewat logout (keputusan: satu akun Telegram aktif)."""
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.start("+6289999999999")
+    assert excinfo.value.code == "already_logged_in"
+    assert excinfo.value.status_code == 409
+
+    # Setelah logout, login lagi diperbolehkan.
+    await service.logout()
+    lagi = await service.start("+6289999999999")
+    assert lagi.next == "code"
+
+
 async def test_kode_terlalu_panjang_ditolak(
     service: TelegramLoginService, database: Database
 ) -> None:
@@ -564,12 +580,14 @@ async def test_flow_dipakai_lagi_setelah_restart_proses(
 
 
 async def _jalankan_seluruh_alur(service: TelegramLoginService) -> None:
-    """Login 2FA sukses, lalu percobaan gagal dengan kode lain, lalu logout."""
+    """Login 2FA sukses → logout → percobaan gagal dengan kode lain → logout lagi."""
     FakeTelegram.sign_in_error = SessionPasswordNeeded()
     start = await service.start(_PHONE)
     await service.verify(start.flow_id, _CODE)
     await service.submit_password(start.flow_id, _2FA_PASSWORD)
+    await service.logout()
 
+    # Percobaan gagal dengan kode berbeda harus tetap hanya memunculkan kodenya.
     FakeTelegram.sign_in_error = PhoneCodeInvalid()
     ulang = await service.start(_PHONE)
     with pytest.raises(TelegramLoginError):

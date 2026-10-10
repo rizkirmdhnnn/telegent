@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -58,10 +59,19 @@ def _settings_field_names() -> set[str]:
 class SettingsStore:
     """Baca/tulis konfigurasi platform di database."""
 
-    def __init__(self, db: Database, cipher: SecretCipher) -> None:
+    def __init__(
+        self,
+        db: Database,
+        cipher: SecretCipher,
+        *,
+        data_dir: Path | None = None,
+    ) -> None:
         self._db = db
         self._cipher = cipher
         self._settings_fields = _settings_field_names()
+        # Lokasi `*.session`. Harus sama dengan yang dipakai layanan login
+        # Telegram (D1), jika tidak runtime tidak akan menemukan sesi hasil login web.
+        self._session_dir = Path(data_dir) if data_dir is not None else None
 
     # --------------------------------------------------------------- reading
 
@@ -221,6 +231,10 @@ class SettingsStore:
             kwargs["allowed_user_ids"] = ",".join(
                 str(item) for item in kwargs["allowed_user_ids"]
             )
+        # `session_dir` bukan setting UI, tetapi harus selalu menunjuk direktori data
+        # agar sesi Telegram hasil login web ditemukan runtime.
+        if self._session_dir is not None:
+            kwargs["session_dir"] = str(self._session_dir)
         return kwargs
 
     async def build_settings(self) -> Settings:

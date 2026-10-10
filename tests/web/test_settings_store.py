@@ -33,6 +33,34 @@ async def store(database: Database, tmp_path: Path) -> SettingsStore:
     return SettingsStore(database, SecretCipher.for_data_dir(tmp_path / "keys"))
 
 
+async def test_build_settings_menunjuk_ke_direktori_data(
+    database: Database, tmp_path: Path
+) -> None:
+    """Sesi Telegram harus berada di direktori data yang sama dengan login web."""
+    data_dir = tmp_path / "data"
+    store = SettingsStore(
+        database, SecretCipher.for_data_dir(tmp_path / "keys2"), data_dir=data_dir
+    )
+    await store.update(_CREDENTIALS, actor="test")
+
+    settings = await store.build_settings()
+
+    assert settings.session_workdir == data_dir
+    assert settings.session_dir == str(data_dir)
+
+
+async def test_store_tanpa_data_dir_memakai_default(
+    database: Database, tmp_path: Path
+) -> None:
+    """Tanpa `data_dir`, store tidak memaksa nilai apa pun (perilaku lama)."""
+    store = SettingsStore(database, SecretCipher.for_data_dir(tmp_path / "keys3"))
+    await store.update(_CREDENTIALS, actor="test")
+
+    settings = await store.build_settings()
+
+    assert settings.session_dir == "."
+
+
 # ------------------------------------------------------------------- registry
 
 
