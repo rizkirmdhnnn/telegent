@@ -220,6 +220,7 @@ class TelegentApp:
             on_stop=self._make_stop(user_id),
         )
         self.sessions[user_id] = session
+        session.on_hangup = self._make_hangup(session)
 
         try:
             assert self.app is not None
@@ -309,3 +310,29 @@ class TelegentApp:
                     pass
 
         return stop
+
+    def _make_hangup(self, session: "CallSession"):
+        """Callback untuk mengakhiri panggilan dari sisi AI (tool end_call)."""
+
+        async def hangup() -> None:
+            log = call_logger(session.user_id, session.call_id)
+            if self.app is not None:
+                peer = types.InputPhoneCall(
+                    id=session.call_id, access_hash=session.access_hash
+                )
+                try:
+                    await self.app.invoke(
+                        functions.phone.DiscardCall(
+                            peer=peer,  # pyright: ignore[reportArgumentType]
+                            duration=session.duration_seconds,
+                            reason=types.PhoneCallDiscardReasonHangup(),  # pyright: ignore[reportArgumentType]
+                            connection_id=0,
+                        )
+                    )
+                    log.info("Panggilan diakhiri oleh AI (DiscardCall terkirim).")
+                except Exception:  # noqa: BLE001
+                    log.exception("Gagal mengirim DiscardCall.")
+            self.sessions.pop(session.user_id, None)
+            await session.close()
+
+        return hangup

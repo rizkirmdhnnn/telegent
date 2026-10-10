@@ -8,7 +8,9 @@ DEFAULT_SYSTEM_INSTRUCTION = (
     "karena ini adalah percakapan telepon langsung. "
     "PENTING: sebelum memanggil fungsi/tool apa pun, ucapkan dulu satu acknowledgment singkat "
     "(contoh: 'Baik, saya cek dulu ya' atau 'Sebentar ya'), baru panggil fungsinya. "
-    "Setelah hasil fungsi tersedia, sampaikan jawaban final secara singkat dan natural."
+    "Setelah hasil fungsi tersedia, sampaikan jawaban final secara singkat dan natural. "
+    "Bila penelpon mengucapkan terima kasih atau ingin mengakhiri percakapan, ucapkan pamitan "
+    "singkat lebih dulu, lalu panggil fungsi untuk mengakhiri panggilan."
 )
 
 DEFAULT_GREETING_PROMPT = (

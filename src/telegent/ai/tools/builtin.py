@@ -47,6 +47,40 @@ def make_datetime_tool() -> ToolSpec:
     )
 
 
+def make_end_call_tool() -> ToolSpec:
+    return ToolSpec(
+        name="end_call",
+        description=(
+            "Mengakhiri panggilan telepon. Gunakan HANYA ketika penelpon secara jelas "
+            "ingin mengakhiri percakapan atau mengucapkan salam perpisahan. "
+            "Ucapkan pamitan singkat terlebih dahulu, baru panggil fungsi ini."
+        ),
+        parameters_json_schema={
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Alasan singkat mengakhiri panggilan (opsional).",
+                }
+            },
+        },
+        handler=_end_call,
+        timeout=2.0,
+        behavior="BLOCKING",
+    )
+
+
+async def _end_call(ctx: ToolContext, args: dict) -> dict:
+    if ctx.hangup is None:
+        return {"error": "Fitur mengakhiri panggilan tidak tersedia pada sesi ini."}
+    reason = (args.get("reason") or "").strip()
+    ctx.hangup()
+    result: dict = {"status": "ending_call"}
+    if reason:
+        result["reason"] = reason
+    return result
+
+
 def default_tools() -> list[ToolSpec]:
     """Kumpulan tool bawaan untuk PoC tool calling."""
-    return [make_datetime_tool()]
+    return [make_datetime_tool(), make_end_call_tool()]

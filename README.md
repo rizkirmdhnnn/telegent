@@ -96,7 +96,7 @@ CLI opsional: `--allow-user <id>` (boleh berulang), `--log-level`.
 ## Tool Calling
 
 Tool didaftarkan di `telegent.app.TelegentApp` (lihat `ai/tools/builtin.py`).
-Tool bawaan saat ini: `get_current_datetime`.
+Tool bawaan: `get_current_datetime` dan `end_call` (mengakhiri panggilan).
 
 Menambah tool baru:
 

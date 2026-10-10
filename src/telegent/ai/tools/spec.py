@@ -14,11 +14,14 @@ ToolHandler = Callable[
 
 @dataclass
 class ToolContext:
-    """Konteks eksekusi tool (identitas sesi)."""
+    """Konteks eksekusi tool (identitas sesi + aksi yang diizinkan)."""
 
     user_id: int
     call_id: int
     logger: Any = None
+    # Aksi untuk mengakhiri panggilan (disediakan CallSession). Sinkron: hanya
+    # menjadwalkan, agar handler tool tidak memblokir penerimaan.
+    hangup: Callable[[], None] | None = None
 
 
 @dataclass

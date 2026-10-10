@@ -69,6 +69,31 @@ Registry otomatis membentuk deklarasi ke `LiveConnectConfig.tools`.
 - Gagal: `raise Exception("pesan")` → dikirim sebagai `{"error": "pesan"}`.
   Jangan biarkan exception menembus; registry sudah menangkapnya.
 
+## Aksi Sesi (contoh: mengakhiri panggilan)
+
+Tool tidak hanya mengembalikan data — lewat `ToolContext` ia bisa memicu aksi sesi.
+Contoh bawaan: `end_call`.
+
+```python
+async def _end_call(ctx: ToolContext, args: dict) -> dict:
+    if ctx.hangup is None:
+        return {"error": "Fitur tidak tersedia."}
+    ctx.hangup()                     # sinkron: menjadwalkan, tidak memblokir
+    return {"status": "ending_call"}
+```
+
+`ctx.hangup()` memanggil `CallSession.schedule_hangup()`, yang:
+
+1. Menunggu audio jawaban **selesai diputar** (antrean kosong + tidak ada
+   aktivitas audio/giliran selama `HANGUP_QUIET_SEC` ≈ 0,5 dtk) agar pamitan
+   tidak terpotong.
+2. Memanggil callback `on_hangup` milik aplikasi → mengirim `phone.DiscardCall`
+   ke Telegram lalu menutup sesi.
+
+Persona sudah diarahkan: bila penelpon berpamitan, AI mengucapkan pamitan singkat
+lalu memanggil `end_call`. Tambahkan aksi sesi lain dengan pola yang sama
+(tambahkan field di `ToolContext` + sediakan callback dari `TelegentApp`).
+
 ## Perilaku Barge-in
 
 Bila penelpon memotong saat tool berjalan, server mengirim `tool_call_cancellation`;

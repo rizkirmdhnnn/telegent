@@ -102,3 +102,44 @@ async def test_sender_mengirim_ke_sink(settings):
         await _cancel(task)
 
     assert ok, "sender harus mengirim frame (senyap saat antrean kosong)"
+
+
+async def test_schedule_hangup_setelah_audio_habis(settings):
+    live = FakeLiveSession()
+    session = make_session(settings=settings, live=live)
+    session._live = live
+
+    fired = asyncio.Event()
+
+    async def on_hangup() -> None:
+        fired.set()
+
+    session.on_hangup = on_hangup
+
+    # Simulasi audio pamitan AI masih diputar.
+    for _ in range(3):
+        session.tg_out_queue.put_nowait(b"\x01" * settings.tg_frame_bytes)
+
+    session.schedule_hangup()
+    await asyncio.sleep(0.1)
+    assert not fired.is_set(), "jangan hangup selama audio masih ada"
+
+    while not session.tg_out_queue.empty():
+        session.tg_out_queue.get_nowait()
+
+    await asyncio.wait_for(fired.wait(), timeout=3.0)
+    assert fired.is_set()
+
+
+async def test_schedule_hangup_idempoten(settings):
+    session = make_session(settings=settings, live=FakeLiveSession())
+
+    async def noop() -> None: ...
+
+    session.on_hangup = noop
+    session.schedule_hangup()
+    first = session._hangup_task
+    session.schedule_hangup()
+    assert session._hangup_task is first
+
+    await session.close()

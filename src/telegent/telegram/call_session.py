@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from contextlib import AbstractAsyncContextManager
 from enum import Enum
 from typing import Any, Awaitable, Callable, Optional
@@ -28,6 +29,10 @@ from telegent.protocols import AudioSink, LiveVoiceSession
 INBOUND_FRAME_BYTES = 1920
 # 20 ms @ 16 kHz mono s16le (comfort silence ke Gemini)
 GEMINI_SILENCE_16K = b"\x00" * 640
+
+# Pengakhiran panggilan: tunggu audio jawaban benar-benar habis sebelum menutup.
+HANGUP_QUIET_SEC = 0.5
+HANGUP_MAX_WAIT = 15.0
 
 LiveFactory = Callable[[], AbstractAsyncContextManager[LiveVoiceSession]]
 
@@ -83,6 +88,13 @@ class CallSession:
         self._ending = asyncio.Event()
         self._closing = False
 
+        # Pengakhiran panggilan oleh AI (tool end_call).
+        self._hangup_task: Optional[asyncio.Task] = None
+        self._hangup_scheduled = False
+        self._connected_at: Optional[float] = None
+        self._last_output_activity = 0.0
+        self.on_hangup: Optional[Callable[[], Awaitable[None]]] = None
+
         self.is_greeting = True
         self.inbound_frame_count = 0
 
@@ -135,6 +147,7 @@ class CallSession:
         try:
             async with self._live_factory() as live:
                 self._live = live
+                self._connected_at = time.monotonic()
                 self.set_state(SessionState.ACTIVE)
                 try:
                     await live.send_greeting(self._settings.greeting_prompt)
@@ -166,19 +179,24 @@ class CallSession:
         self.set_state(SessionState.ENDING)
         self._ending.set()
 
-        for task in self._tool_tasks.values():
-            task.cancel()
+        current = asyncio.current_task()
+
+        for task in list(self._tool_tasks.values()):
+            if task is not current:
+                task.cancel()
         self._tool_tasks.clear()
 
-        for task in self._tasks:
+        cancellable = [task for task in self._tasks if task is not current]
+        for task in cancellable:
             task.cancel()
-        if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
+        if cancellable:
+            await asyncio.gather(*cancellable, return_exceptions=True)
         self._tasks.clear()
 
-        current = asyncio.current_task()
         if self._live_task is not None and self._live_task is not current:
             self._live_task.cancel()
+        if self._hangup_task is not None and self._hangup_task is not current:
+            self._hangup_task.cancel()
 
         self._inbound_framer.clear()
         self._outbound_framer.clear()
@@ -249,6 +267,7 @@ class CallSession:
                 elif isinstance(event, ToolCallCancelled):
                     self._cancel_tool(event.id)
                 elif isinstance(event, TurnComplete):
+                    self._last_output_activity = time.monotonic()
                     if self.is_greeting:
                         self.finish_greeting()
         except asyncio.CancelledError:
@@ -257,6 +276,7 @@ class CallSession:
             self._log.exception("Kesalahan penerima Gemini: %s", exc)
 
     async def _enqueue_outbound(self, frame: bytes) -> None:
+        self._last_output_activity = time.monotonic()
         queue = self.tg_out_queue
         if not queue.full():
             queue.put_nowait(frame)
@@ -314,7 +334,12 @@ class CallSession:
 
     async def _run_tool(self, request: ToolRequest) -> None:
         self._log.info("Menjalankan tool '%s' args=%s", request.name, request.args)
-        ctx = ToolContext(user_id=self.user_id, call_id=self.call_id, logger=self._log)
+        ctx = ToolContext(
+            user_id=self.user_id,
+            call_id=self.call_id,
+            logger=self._log,
+            hangup=self.schedule_hangup,
+        )
         try:
             result = await self._tools.execute(ctx, request)
         finally:
@@ -333,3 +358,43 @@ class CallSession:
         task = self._tool_tasks.pop(tool_id, None)
         if task is not None:
             task.cancel()
+
+    # --------------------------------------------------------------- hangup
+    def schedule_hangup(self) -> None:
+        """Jadwalkan pengakhiran panggilan setelah audio jawaban selesai diputar.
+
+        Sinkron: aman dipanggil dari handler tool (tidak memblokir penerimaan).
+        """
+        if self._hangup_scheduled or self._closing:
+            return
+        self._hangup_scheduled = True
+        self._last_output_activity = time.monotonic()
+        self._log.info("Permintaan mengakhiri panggilan; menunggu audio habis diputar.")
+        self._hangup_task = asyncio.create_task(
+            self._hangup_when_drained(), name=f"hangup-{self.user_id}"
+        )
+
+    async def _hangup_when_drained(self) -> None:
+        # Tunggu sampai tidak ada aktivitas audio/ giliran selama HANGUP_QUIET_SEC
+        # (agar kalimat pamitan & lanjutan model tidak terpotong).
+        deadline = time.monotonic() + HANGUP_MAX_WAIT
+        while time.monotonic() < deadline:
+            idle = time.monotonic() - self._last_output_activity
+            if self.tg_out_queue.empty() and idle >= HANGUP_QUIET_SEC:
+                break
+            await asyncio.sleep(0.05)
+
+        self._log.info("Audio selesai; mengakhiri panggilan.")
+        if self.on_hangup is not None:
+            try:
+                await self.on_hangup()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                self._log.exception("Gagal mengakhiri panggilan.")
+
+    @property
+    def duration_seconds(self) -> int:
+        if self._connected_at is None:
+            return 0
+        return int(max(0.0, time.monotonic() - self._connected_at))

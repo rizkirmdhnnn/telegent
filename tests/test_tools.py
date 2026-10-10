@@ -92,3 +92,32 @@ async def test_datetime_tool():
     output = result.response["output"]
     assert output["timezone"] == "Asia/Jakarta"
     assert "iso" in output and "human" in output
+
+
+async def test_end_call_tool_memanggil_hangup():
+    from telegent.ai.tools.builtin import make_end_call_tool
+
+    called: list[bool] = []
+    spec = make_end_call_tool()
+    ctx = ToolContext(user_id=1, call_id=2, hangup=lambda: called.append(True))
+
+    result = await spec.handler(ctx, {"reason": "sudah selesai"})
+
+    assert called == [True]
+    assert result["status"] == "ending_call"
+    assert result["reason"] == "sudah selesai"
+
+
+async def test_end_call_tool_tanpa_hangup_mengembalikan_error():
+    from telegent.ai.tools.builtin import make_end_call_tool
+
+    spec = make_end_call_tool()
+    result = await spec.handler(ToolContext(user_id=1, call_id=2), {})
+    assert "error" in result
+
+
+def test_default_tools_berisi_end_call():
+    from telegent.ai.tools.builtin import default_tools
+
+    names = {spec.name for spec in default_tools()}
+    assert {"get_current_datetime", "end_call"} <= names
