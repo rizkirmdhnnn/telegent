@@ -1,2 +1,0 @@
-2026-10-10 18:49:27.301473	[400 CALL_NOT_ACTIVE]	phone.SendSignalingData
-2026-10-10 18:49:27.301903	[400 CALL_NOT_ACTIVE]	phone.SendSignalingData

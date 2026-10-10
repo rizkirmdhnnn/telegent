@@ -15,4 +15,8 @@ dist/
 build/
 .pytest_cache/
 .pyright/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
