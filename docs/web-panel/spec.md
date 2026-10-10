@@ -77,7 +77,7 @@ Setiap setting punya metadata di `settings_registry.py`. Kolom **Penerapan**:
 |---|---|---|---|---|---|---|
 | `telegram_api_id` | kredensial | int | — | > 0, wajib | restart | tidak |
 | `telegram_api_hash` | kredensial | str | — | 32 hex, wajib | restart | **ya** |
-| `gemini_api_key` | kredensial | str | — | non-kosong, prefix `AIza` | restart | **ya** |
+| `gemini_api_key` | kredensial | str | — | non-kosong, min. 20 karakter | restart | **ya** |
 | `telegram_session_name` | akun_telegram | str | `userbot_session` | pola nama berkas | restart | tidak |
 | `gemini_model` | model_ai | str | `gemini-3.1-flash-live-preview` | pilihan/model valid | hot | tidak |
 | `system_instruction` | persona | text | *(default kode)* | non-kosong | hot | tidak |

@@ -9,10 +9,10 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 
 ## Fase 0 — Fondasi
 
-- [ ] **A1** Skeleton web FastAPI + mount SPA + `healthz` + lifespan — M
-- [ ] **A2** Lapisan DB (SQLAlchemy async, SQLite WAL) + model + Alembic — L
-- [ ] **A3** Crypto secret (kunci file auto-generate, Fernet) — S
-- [ ] **A4** Settings registry + SettingsStore (DB ⇄ `Settings`, import `.env`) — L
+- [x] **A1** Skeleton web FastAPI + mount SPA + `healthz` + lifespan — M
+- [x] **A2** Lapisan DB (SQLAlchemy async, SQLite WAL) + model + Alembic — L
+- [x] **A3** Crypto secret (kunci file auto-generate, Fernet) — S
+- [x] **A4** Settings registry + SettingsStore (DB ⇄ `Settings`, import `.env`) — L
 - [ ] **A5** Auth admin (password, cookie sesi, CSRF) + first-run setup + TOTP — L
 - [ ] **A6** Audit log (infra + masking secret) — S
 - [ ] **A7** Refactor `TelegentApp` + `RuntimeController` (start/stop/restart) — L

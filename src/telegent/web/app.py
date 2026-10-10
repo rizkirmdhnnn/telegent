@@ -18,9 +18,11 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from telegent import __version__
 from telegent.web.bootstrap import BootstrapConfig, load_bootstrap
+from telegent.web.crypto import SecretCipher
 from telegent.web.db import Database
 from telegent.web.db.migrate import upgrade_to_head_async
 from telegent.web.routers import ROUTERS
+from telegent.web.settings_store import SettingsStore
 
 log = logging.getLogger("telegent.web")
 
@@ -51,17 +53,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # asyncio.run() yang tidak boleh dipanggil dari loop yang sedang aktif.
     await upgrade_to_head_async(cfg.db_url)
     db = Database(cfg.db_url)
+    cipher = SecretCipher.from_bootstrap(cfg)
+    store = SettingsStore(db, cipher)
+    await store.import_env_once()
+
     app.state.db = db
+    app.state.cipher = cipher
+    app.state.settings_store = store
+
+    configured = "siap" if await store.is_configured() else "belum lengkap"
     log.info(
-        "Web panel siap (data=%s, db=%s, frontend=%s).",
+        "Web panel siap (data=%s, db=%s, konfigurasi=%s, frontend=%s).",
         cfg.data_dir,
         cfg.db_url,
+        configured,
         cfg.frontend_dist if cfg.has_frontend else "(belum dibangun)",
     )
     try:
         yield
     finally:
         # Runtime controller (A7) akan menutup diri sebelum database.
+        app.state.settings_store = None
         await db.dispose()
         app.state.db = None
         log.info("Web panel berhenti.")
