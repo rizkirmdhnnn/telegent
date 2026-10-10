@@ -10,6 +10,7 @@ from telegent.web.bootstrap import BootstrapConfig
 from telegent.web.crypto import SecretCipher
 from telegent.web.db.base import Database
 from telegent.web.errors import APIError
+from telegent.web.runtime import RuntimeController
 from telegent.web.security import CSRF_COOKIE, SESSION_COOKIE, AdminSession, SessionManager
 from telegent.web.settings_store import SettingsStore
 
@@ -44,6 +45,13 @@ def get_cipher(request: Request) -> SecretCipher:
     return cast(SecretCipher, cipher)
 
 
+def get_runtime(request: Request) -> RuntimeController:
+    runtime = request.app.state.runtime
+    if runtime is None:
+        raise APIError(503, "runtime_unavailable", "Runtime bot belum siap.")
+    return cast(RuntimeController, runtime)
+
+
 def current_session(request: Request) -> AdminSession | None:
     session = get_sessions(request).get(request.cookies.get(SESSION_COOKIE))
     return session
@@ -72,5 +80,6 @@ SessionsDep = Annotated[SessionManager, Depends(get_sessions)]
 DatabaseDep = Annotated[Database, Depends(get_database)]
 StoreDep = Annotated[SettingsStore, Depends(get_settings_store)]
 CipherDep = Annotated[SecretCipher, Depends(get_cipher)]
+RuntimeDep = Annotated[RuntimeController, Depends(get_runtime)]
 AdminDep = Annotated[AdminSession, Depends(require_admin)]
 CsrfDep = Annotated[AdminSession, Depends(require_csrf)]

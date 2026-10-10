@@ -8,6 +8,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from telegent.web.settings_registry import SettingsValidationError
+
 
 class APIError(Exception):
     """Galat aplikasi yang dikembalikan sebagai JSON terstruktur."""
@@ -43,12 +45,30 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(APIError)
     async def _handle_api_error(_request: Request, exc: APIError) -> JSONResponse:
+        del _request
         return _json(exc.status_code, exc.payload())
+
+    @app.exception_handler(SettingsValidationError)
+    async def _handle_settings_validation_error(
+        _request: Request, exc: SettingsValidationError
+    ) -> JSONResponse:
+        del _request
+        return _json(
+            422,
+            {
+                "error": {
+                    "code": "validation_error",
+                    "message": "Pengaturan tidak valid.",
+                    "fields": exc.as_dict(),
+                }
+            },
+        )
 
     @app.exception_handler(RequestValidationError)
     async def _handle_validation_error(
         _request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        del _request
         fields = {}
         for item in exc.errors():
             location = [str(part) for part in item.get("loc", []) if part != "body"]

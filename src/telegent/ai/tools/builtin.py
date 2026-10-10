@@ -10,22 +10,34 @@ from telegent.ai.tools.spec import ToolContext, ToolSpec
 DEFAULT_TIMEZONE = "Asia/Jakarta"
 
 
-async def _get_current_datetime(ctx: ToolContext, args: dict) -> dict:
-    tz_name = (args.get("timezone") or DEFAULT_TIMEZONE).strip()
-    try:
-        zone = ZoneInfo(tz_name)
-    except Exception:  # noqa: BLE001 - fallback ke zona default
-        tz_name = DEFAULT_TIMEZONE
-        zone = ZoneInfo(DEFAULT_TIMEZONE)
-    now = datetime.now(zone)
-    return {
-        "iso": now.isoformat(),
-        "human": now.strftime("%A, %d %B %Y %H:%M"),
-        "timezone": tz_name,
-    }
+def make_datetime_tool(default_timezone: str = DEFAULT_TIMEZONE) -> ToolSpec:
+    """Tool jam; `default_timezone` dipakai bila model tidak mengirim zona waktu."""
 
+    def _from_config(config: dict) -> ToolSpec:
+        return make_datetime_tool(
+            default_timezone=str(config.get("default_timezone") or DEFAULT_TIMEZONE)
+        )
 
-def make_datetime_tool() -> ToolSpec:
+    async def _handler(ctx: ToolContext, args: dict) -> dict:
+        del ctx
+        tz_name = (args.get("timezone") or default_timezone).strip()
+        try:
+            zone = ZoneInfo(tz_name)
+        except Exception:  # noqa: BLE001 - zona dari model mungkin tidak dikenal
+            # Fallback bertingkat: zona yang dikonfigurasi, lalu konstanta bawaan.
+            tz_name = default_timezone
+            try:
+                zone = ZoneInfo(default_timezone)
+            except Exception:  # noqa: BLE001 - konfigurasi pun tidak valid
+                tz_name = DEFAULT_TIMEZONE
+                zone = ZoneInfo(DEFAULT_TIMEZONE)
+        now = datetime.now(zone)
+        return {
+            "iso": now.isoformat(),
+            "human": now.strftime("%A, %d %B %Y %H:%M"),
+            "timezone": tz_name,
+        }
+
     return ToolSpec(
         name="get_current_datetime",
         description=(
@@ -41,9 +53,10 @@ def make_datetime_tool() -> ToolSpec:
                 }
             },
         },
-        handler=_get_current_datetime,
+        handler=_handler,
         timeout=2.0,
         behavior="BLOCKING",
+        config_factory=_from_config,
     )
 
 
@@ -67,6 +80,7 @@ def make_end_call_tool() -> ToolSpec:
         handler=_end_call,
         timeout=2.0,
         behavior="BLOCKING",
+        can_disable=False,
     )
 
 

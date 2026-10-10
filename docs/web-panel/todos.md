@@ -23,13 +23,18 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 
 ## Fase 1 — Konfigurasi
 
-- [ ] **B1** Scaffold SvelteKit + shadcn-svelte + Tailwind + API client + i18n — L
-- [ ] **B2** UI auth: setup wizard, login, akun/TOTP — M
-- [ ] **B3** App shell: navigasi, layout, tema, ganti bahasa — M
-- [ ] **C1** API settings + endpoint schema — M
-- [ ] **C2** UI settings (form bergrup, validasi, badge hot/restart) — L
-- [ ] **C3** API kredensial + validasi, dan API tool — M
-- [ ] **C4** UI kredensial + UI tool — M
+> **Status: selesai + review diperbaiki.** Backend (pytest/pyright) dan frontend
+> (svelte-check) hijau. `GET /api/runtime/status` dan `POST /api/runtime/apply`
+> sengaja dibuat lebih dulu dari tiket F1 karena B3/C2 memerlukannya; kontrol
+> start/stop/restart eksplisit tetap di F1.
+
+- [x] **B1** Scaffold SvelteKit + shadcn-svelte + Tailwind + API client + i18n — L
+- [x] **B2** UI auth: setup wizard, login, akun/TOTP — M
+- [x] **B3** App shell: navigasi, layout, tema, ganti bahasa — M
+- [x] **C1** API settings + endpoint schema — M
+- [x] **C2** UI settings (form bergrup, validasi, badge hot/restart) — L
+- [x] **C3** API kredensial + validasi, dan API tool — M
+- [x] **C4** UI kredensial + UI tool — M
 
 ## Fase 2 — Login Telegram
 

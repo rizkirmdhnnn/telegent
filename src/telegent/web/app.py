@@ -29,6 +29,7 @@ from telegent.web.routers import ROUTERS
 from telegent.web.runtime import RuntimeController
 from telegent.web.security import SessionManager
 from telegent.web.settings_store import SettingsStore
+from telegent.web.tools_store import tool_configs_for_runtime
 
 log = logging.getLogger("telegent.web")
 
@@ -85,7 +86,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.log_buffer = log_buffer
     app.state.redactor = redactor
     app.state.runtime = RuntimeController(
-        store, session_dir=cfg.data_dir, event_sink=_publish_event(app)
+        store,
+        session_dir=cfg.data_dir,
+        event_sink=_publish_event(app),
+        tool_config_provider=lambda: tool_configs_for_runtime(db),
     )
 
     configured = "siap" if await store.is_configured() else "belum lengkap"

@@ -78,7 +78,7 @@ def test_lifespan_membuat_direktori_data(bootstrap: BootstrapConfig) -> None:
         assert client.get("/api/healthz").status_code == 200
 
 
-def test_load_bootstrap_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_bootstrap_default(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in _BOOTSTRAP_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
 
@@ -89,7 +89,9 @@ def test_load_bootstrap_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert cfg.secret_key is None
     assert cfg.data_dir.name == "data"
     assert cfg.db_url.endswith("telegent.db")
-    assert cfg.has_frontend is False  # belum ada build frontend
+    # Bergantung pada apakah build frontend sudah ada; yang dijamin adalah
+    # `has_frontend` konsisten dengan keberadaan index.html di dist.
+    assert cfg.has_frontend == (cfg.frontend_dist / "index.html").is_file()
 
 
 def test_load_bootstrap_dan_override_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

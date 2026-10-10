@@ -32,6 +32,7 @@ async def list_audit(
     action: str | None = Query(None, max_length=64),
 ) -> dict[str, Any]:
     """Daftar entri audit terbaru (terlama dulu)."""
+    del admin  # dependency ada untuk mewajibkan sesi, bukan untuk datanya
     count_stmt = select(func.count()).select_from(models.AuditLog)
     stmt = select(models.AuditLog)
 

@@ -280,7 +280,11 @@ Penanganan error: `phone_invalid`, `code_invalid`, `code_expired`, `password_inv
 | POST | `/runtime/start` | — | `{ok}` |
 | POST | `/runtime/stop` | — | `{ok}` |
 | POST | `/runtime/restart` | — | `{ok}` |
-| POST | `/runtime/apply` | — | `{ok}` (terapkan setting `restart` yang tertunda) |
+| POST | `/runtime/apply` | — | status runtime setelah perubahan tertunda diterapkan |
+
+> **Catatan Fase 1:** `GET /runtime/status` dan `POST /runtime/apply` diimplementasikan
+> lebih awal (tiket B3/C2) karena UI sudah membutuhkan keduanya. Kontrol
+> start/stop/restart eksplisit tetap menjadi tiket F1.
 
 ### 6.6 Panggilan
 | Method | Path | Query | Respons |

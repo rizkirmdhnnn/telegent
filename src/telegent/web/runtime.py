@@ -12,7 +12,7 @@ import logging
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from telegent.app import EventSink, TelegentApp
 from telegent.config import Settings
@@ -26,6 +26,9 @@ STOP_TIMEOUT_SEC = 20.0
 
 #: Pabrik TelegentApp (di-override pada pengujian dengan fake).
 AppFactory = Callable[[Settings], TelegentApp]
+
+#: Pemuat konfigurasi tool dari database (kembalikan `{nama: config}`).
+ToolConfigProvider = Callable[[], Awaitable[dict[str, dict[str, Any]]]]
 
 
 class RuntimeState(str, Enum):
@@ -69,11 +72,17 @@ class RuntimeController:
         app_factory: AppFactory | None = None,
         event_sink: EventSink | None = None,
         session_dir: Path | None = None,
+        tool_config_provider: ToolConfigProvider | None = None,
     ) -> None:
         self._store = store
+        self._tool_config_provider = tool_config_provider
+        self._tool_configs: dict[str, dict[str, Any]] = {}
         self._app_factory: AppFactory = app_factory or (
             lambda settings: TelegentApp(
-                settings, install_signal_handlers=False, event_sink=event_sink
+                settings,
+                install_signal_handlers=False,
+                event_sink=event_sink,
+                tool_configs=self._tool_configs,
             )
         )
         self._session_dir = session_dir
@@ -99,6 +108,11 @@ class RuntimeController:
     @property
     def settings(self) -> Optional[Settings]:
         return self._settings
+
+    @property
+    def tool_configs(self) -> dict[str, dict[str, Any]]:
+        """Konfigurasi tool yang akan dipakai saat bot dijalankan."""
+        return dict(self._tool_configs)
 
     # ------------------------------------------------------------------ status
 
@@ -149,6 +163,7 @@ class RuntimeController:
 
             app = self._app_factory(settings)
             try:
+                await self._load_tool_configs()
                 await app.start()
             except Exception as exc:  # noqa: BLE001 - kegagalan bot tidak mematikan web
                 self._state = RuntimeState.ERROR
@@ -232,14 +247,12 @@ class RuntimeController:
         Hanya setting kelas `hot` yang langsung diterapkan; nilai yang ditandai
         `restart` tetap memakai konfigurasi lama sampai bot di-restart.
         """
+        self._pending_restart = await self._store.restart_keys_pending(self._settings)
+
         try:
             stored = await self._store.build_settings()
         except NotConfigured:
-            self._pending_restart = []
             return self.status()
-
-        # Hitung tertunda terhadap konfigurasi yang SEDANG dipakai runtime.
-        self._pending_restart = await self._store.restart_keys_pending(self._settings)
 
         if self._app is not None and self._state is RuntimeState.RUNNING:
             effective = self._effective_settings(stored)
@@ -263,6 +276,49 @@ class RuntimeController:
         if not await self._store.restart_keys_pending(self._settings):
             return await self.refresh_settings()
         return await self.restart()
+
+    # ------------------------------------------------------------------- tools
+
+    async def _load_tool_configs(self) -> None:
+        """Muat konfigurasi tool tersimpan agar berlaku saat runtime dibangun.
+
+        Nilai di database menang, tetapi entri yang baru saja disimpan lewat
+        panel (belum tersinkron ke DB pada kasus ini) tetap dipertahankan.
+        """
+        if self._tool_config_provider is None:
+            return
+        try:
+            loaded = await self._tool_config_provider()
+        except Exception:  # noqa: BLE001 - konfigurasi tool tidak boleh menghalangi start
+            log.exception("Gagal memuat konfigurasi tool; memakai nilai di memori.")
+            return
+        self._tool_configs = {**self._tool_configs, **loaded}
+
+    async def apply_tool_config(
+        self,
+        name: str,
+        *,
+        enabled: bool | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> None:
+        """Terapkan perubahan tool ke bot yang hidup **dan** ke start berikutnya.
+
+        Nilai disimpan pada controller karena konfigurasi di database sudah
+        tersimpan; hidrolasi ulang dilakukan setiap `start()`.
+        """
+        if config is not None:
+            self._tool_configs[name] = config
+        elif name not in self._tool_configs:
+            self._tool_configs[name] = {}
+
+        if self._app is None or self._state is not RuntimeState.RUNNING:
+            # Bot mati: cukup simpan; `start()` berikutnya akan memuatnya.
+            return
+        try:
+            self._app.apply_tool_config(name, enabled=enabled, config=config)
+        except (KeyError, ValueError) as exc:
+            # Nilai tak valid sudah ditolak router; Reaching here berarti data basi.
+            log.warning("Gagal menerapkan konfigurasi tool '%s': %s", name, exc)
 
     # ------------------------------------------------------------------ utilitas
 

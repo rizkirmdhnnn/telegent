@@ -37,6 +37,7 @@ class TelegentApp:
         *,
         install_signal_handlers: bool = True,
         event_sink: Optional[EventSink] = None,
+        tool_configs: Optional[dict[str, dict]] = None,
     ) -> None:
         self.settings = settings
         self._log = get_logger("telegent.app")
@@ -48,6 +49,8 @@ class TelegentApp:
         self.tools = ToolRegistry()
         for spec in default_tools():
             self.tools.register(spec)
+        # Konfigurasi tool dari panel web (zona waktu, status aktif, dll).
+        self.tools.apply_configs(tool_configs or {})
         self.sessions: dict[int, CallSession] = {}
         self.rate_limiter = CallRateLimiter(
             settings.max_calls_per_window, settings.call_window_seconds
@@ -80,6 +83,16 @@ class TelegentApp:
         self.rate_limiter = CallRateLimiter(
             settings.max_calls_per_window, settings.call_window_seconds
         )
+
+    def apply_tool_config(
+        self,
+        name: str,
+        *,
+        enabled: bool | None = None,
+        config: dict | None = None,
+    ) -> None:
+        """Terapkan perubahan tool pada registry yang hidup."""
+        self.tools.configure(name, enabled=enabled, config=config)
 
     def _emit(self, event: str, payload: dict) -> None:
         """Terbitkan event ke pemantau web (diabaikan bila tidak ada pemantau)."""
