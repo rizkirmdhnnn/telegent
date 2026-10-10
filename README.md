@@ -30,19 +30,21 @@ Detail lebih lanjut: [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
-## Setup Lokal
+## Setup Lokal (uv)
+
+Proyek memakai [uv](https://docs.astral.sh/uv/) untuk mengelola dependensi & lingkungan
+(konfigurasi ada di `pyproject.toml`, versi terkunci di `uv.lock`).
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"          # atau: pip install -e .
-cp .env.example .env             # isi TELEGRAM_API_ID/HASH & GEMINI_API_KEY
+uv sync                    # buat .venv sesuai uv.lock (dev group terpasang)
+uv sync --extra poc        # opsional: + sounddevice (mic/speaker untuk PoC lokal)
+cp .env.example .env       # isi TELEGRAM_API_ID/HASH & GEMINI_API_KEY
 ```
 
 Jalankan:
 
 ```bash
-python -m telegent               # atau: telegent
+uv run telegent            # atau: uv run python -m telegent
 ```
 
 Saat pertama kali, Pyrogram meminta nomor telepon & kode OTP secara interaktif di terminal.
@@ -121,8 +123,8 @@ Panduan lengkap: [`docs/tools.md`](docs/tools.md).
 ## Testing
 
 ```bash
-pytest -q                 # unit + integration (dengan fake, tanpa jaringan)
-pyright src/telegent      # type checking
+uv run pytest -q                 # unit + integration (dengan fake, tanpa jaringan)
+uv run pyright src/telegent      # type checking
 ```
 
 ---

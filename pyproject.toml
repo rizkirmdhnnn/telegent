@@ -8,7 +8,6 @@ version = "0.2.0"
 description = "Telegent - AI voice agent untuk panggilan Telegram (Gemini Live API)"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Proprietary" }
 dependencies = [
     "pyrogram==2.0.106",
     "tgcrypto==1.2.5",
@@ -23,10 +22,12 @@ dependencies = [
 [project.optional-dependencies]
 # Alat bantu PoC lokal (Fase 1: mikrofon/speaker). Tidak dibutuhkan di server/Docker.
 poc = ["sounddevice>=0.5.0"]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "pyright>=1.1"]
 
 [project.scripts]
 telegent = "telegent.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "pyright>=1.1"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
