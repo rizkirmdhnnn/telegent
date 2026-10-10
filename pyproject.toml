@@ -38,3 +38,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Peredam noise: pyrogram memanggil asyncio.get_event_loop() saat import.
+filterwarnings = [
+    "ignore:There is no current event loop:DeprecationWarning",
+]
