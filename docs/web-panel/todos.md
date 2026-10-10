@@ -9,6 +9,9 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 
 ## Fase 0 — Fondasi
 
+> **Status: selesai** (branch `feat/web-panel-phase-0`). 206 tes hijau, pyright bersih.
+> Endpoint `/api/settings` belum ada — itu tiket C1.
+
 - [x] **A1** Skeleton web FastAPI + mount SPA + `healthz` + lifespan — M
 - [x] **A2** Lapisan DB (SQLAlchemy async, SQLite WAL) + model + Alembic — L
 - [x] **A3** Crypto secret (kunci file auto-generate, Fernet) — S
