@@ -23,6 +23,8 @@ from telegent.web.crypto import SecretCipher
 from telegent.web.db import Database
 from telegent.web.db.migrate import upgrade_to_head_async
 from telegent.web.errors import install_error_handlers
+from telegent.web.events import EventBus
+from telegent.web.log_stream import BusLogHandler, LogRingBuffer, SecretRedactor
 from telegent.web.routers import ROUTERS
 from telegent.web.runtime import RuntimeController
 from telegent.web.security import SessionManager
@@ -64,6 +66,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.db = db
     app.state.cipher = cipher
     app.state.settings_store = store
+
+    bus = EventBus()
+    log_buffer = LogRingBuffer()
+    redactor = SecretRedactor()
+    if await store.is_configured():
+        redactor.add_all(
+            [
+                await store.get("gemini_api_key"),
+                await store.get("telegram_api_hash"),
+            ]
+        )
+    log_handler = BusLogHandler(bus, log_buffer, redactor)
+    root_logger = logging.getLogger()
+    root_logger.addHandler(log_handler)
+
+    app.state.events = bus
+    app.state.log_buffer = log_buffer
+    app.state.redactor = redactor
     app.state.runtime = RuntimeController(
         store, session_dir=cfg.data_dir, event_sink=_publish_event(app)
     )
@@ -84,8 +104,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         # Runtime controller (A7) ditutup sebelum database.
         await app.state.runtime.shutdown()
+        root_logger.removeHandler(log_handler)
         app.state.settings_store = None
         app.state.runtime = None
+        app.state.events = None
         await db.dispose()
         app.state.db = None
         log.info("Web panel berhenti.")
