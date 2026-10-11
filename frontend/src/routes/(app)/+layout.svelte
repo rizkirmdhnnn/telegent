@@ -8,7 +8,6 @@
 	import StatusBadge from '$lib/components/layout/StatusBadge.svelte';
 	import LanguageSwitch from '$lib/components/layout/LanguageSwitch.svelte';
 	import ThemeSwitch from '$lib/components/layout/ThemeSwitch.svelte';
-	import RuntimeControl from '$lib/components/runtime/RuntimeControl.svelte';
 	import RestartPendingBar from '$lib/components/settings/RestartPendingBar.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 
@@ -171,7 +170,6 @@
 			</div>
 
 			<div class="flex items-center gap-3">
-				<RuntimeControl showRestart={false} />
 				<LanguageSwitch />
 				<ThemeSwitch />
 			</div>

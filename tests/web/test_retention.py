@@ -341,6 +341,39 @@ async def test_loop_berhenti_saat_dibatalkan(
 # ------------------------------------------------------------------ lifespan
 
 
+async def _remaining_calls(db_url: str) -> int:
+    """Jumlah `call_record` yang tersisa (helper untuk menunggu efek boot)."""
+    from sqlalchemy import func, select
+
+    from telegent.web.db import models
+    from telegent.web.db.base import Database
+
+    db = Database(db_url)
+    try:
+        async with db.session() as session:
+            return int(
+                (
+                    await session.execute(
+                        select(func.count()).select_from(models.CallRecord)
+                    )
+                ).scalar_one()
+            )
+    finally:
+        await db.dispose()
+
+
+def _tunggu_sampai(predikat, *, pesan: str, timeout: float = 5.0) -> None:
+    """Tunggu kondisi terpenuhi; kegagalan berarti bug, bukan sekadar lambat."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predikat():
+            return
+        time.sleep(0.05)
+    raise AssertionError(pesan)
+
+
 def test_pembersihan_dijalankan_saat_boot(tmp_path) -> None:
     """Boot menjalankan satu siklus: data lama terhapus sebelum web melayani."""
     from fastapi.testclient import TestClient
@@ -368,6 +401,12 @@ def test_pembersihan_dijalankan_saat_boot(tmp_path) -> None:
 
     with TestClient(create_app(cfg)) as client:
         assert client.get("/api/healthz").status_code == 200
+        # Pembersihan boot berjalan di task background (agar panel tidak
+        # menunggu), jadi tunggu efeknya, bukan urutan eksekusinya.
+        _tunggu_sampai(
+            lambda: asyncio.run(_remaining_calls(cfg.db_url)) == 0,
+            pesan="pembersihan retensi tidak berjalan saat boot",
+        )
 
     async def remaining() -> tuple[int, int]:
         db = Database(cfg.db_url)

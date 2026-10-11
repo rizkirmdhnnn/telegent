@@ -64,6 +64,8 @@ class RuntimeStatus:
     last_error: str | None = None
     since: str | None = None
     pending_restart: list[str] = field(default_factory=list)
+    #: Jumlah panggilan yang diakhiri graceful pada drain terakhir (spec §6.5).
+    last_drained: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -83,6 +85,7 @@ class RuntimeController:
         session_dir: Path | None = None,
         tool_config_provider: ToolConfigProvider | None = None,
         call_observer: CallObserver | None = None,
+        drain_timeout: float = DRAIN_TIMEOUT_SEC,
     ) -> None:
         self._store = store
         self._event_sink = event_sink
@@ -106,6 +109,8 @@ class RuntimeController:
         self._settings: Optional[Settings] = None
         self._pending_restart: list[str] = []
         self._last_drained: int = 0
+        self._drain_timeout = drain_timeout
+        self._stop_initiated = False
         self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------- properties
@@ -181,6 +186,7 @@ class RuntimeController:
             last_error=self._last_error,
             since=self._since,
             pending_restart=list(self._pending_restart),
+            last_drained=self._last_drained,
         )
 
     # ------------------------------------------------------------- lifecycle
@@ -193,6 +199,7 @@ class RuntimeController:
 
             self._state = RuntimeState.STARTING
             self._last_error = None
+            self._publish_status()
 
             try:
                 settings = await self._store.build_settings()
@@ -242,7 +249,10 @@ class RuntimeController:
                 self._task = None
                 self._state = RuntimeState.STOPPED
                 self._since = None
-                self._publish_status()
+                # Kalau berhenti karena permintaan `stop()`, status sudah disiarkan
+                # di sana; mengulang di sini membuat event dobel.
+                if not self._stop_initiated:
+                    self._publish_status()
 
     @property
     def last_drained(self) -> int:
@@ -304,10 +314,12 @@ class RuntimeController:
         return any(existing is session for existing in self._app.active_sessions())
 
     async def stop(self) -> RuntimeStatus:
-        """Hentikan bot: drain panggilan aktif lebih dulu, lalu tutup."""
-        # Drain memakai `app.active_sessions()`; saat `_app` sudah None (bot tidak
-        # hidup) tidak ada sesi yang perlu ditutup.
-        self._last_drained = await self.drain_active_calls()
+        """Hentikan bot: drain panggilan aktif lebih dulu, lalu tutup.
+
+        Seluruh urutan ini berada di dalam `_lock`. Sebelumnya drain berjalan
+        **luar** lock sehingga `start()` bisa membangun app baru di tengah
+        jendela drain, lalu `stop()` mematikan bot yang baru saja dinyalakan.
+        """
         async with self._lock:
             app = self._app
             if app is None:
@@ -319,20 +331,37 @@ class RuntimeController:
                     self._state = RuntimeState.STOPPED
                 return self.status()
 
+            # Status disiarkan lebih dulu: UI harus tahu transisi dimulai, dan
+            # nilai ini juga dipakai sebagai `before` pada audit.
             self._state = RuntimeState.STOPPING
-            await app.stop()
-            task = self._task
-            if task is not None:
-                try:
-                    await asyncio.wait_for(asyncio.shield(task), timeout=STOP_TIMEOUT_SEC)
-                except asyncio.TimeoutError:
-                    log.warning("Runtime tidak berhenti dalam %ss; dipaksa.", STOP_TIMEOUT_SEC)
-                    task.cancel()
-                    await app.shutdown()
-                    self._app = None
-                    self._task = None
-                    self._state = RuntimeState.STOPPED
-                    self._since = None
+            self._publish_status()
+
+            # Drain hanya bermakna bila `_app` ada; `drain_active_calls` sudah
+            # menulis `_last_drained` sehingga tidak perlu di-set lagi di sini.
+            await self.drain_active_calls(self._drain_timeout)
+
+            self._stop_initiated = True
+            try:
+                await app.stop()
+                task = self._task
+                if task is not None:
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.shield(task), timeout=STOP_TIMEOUT_SEC
+                        )
+                    except asyncio.TimeoutError:
+                        log.warning(
+                            "Runtime tidak berhenti dalam %ss; dipaksa.", STOP_TIMEOUT_SEC
+                        )
+                        task.cancel()
+                        await app.shutdown()
+                        self._app = None
+                        self._task = None
+            finally:
+                self._stop_initiated = False
+
+            self._state = RuntimeState.STOPPED
+            self._since = None
             self._publish_status()
             return self.status()
 

@@ -298,7 +298,8 @@
     "recent_empty": "Belum ada panggilan.",
     "view_all": "Lihat semua",
     "quick_calls": "Daftar panggilan",
-    "quick_logs": "Log langsung"
+    "quick_logs": "Log langsung",
+    "fix_config": "Perbaiki konfigurasi"
   },
   "groups": {
     "model_ai": "Model AI & Intelegensi",

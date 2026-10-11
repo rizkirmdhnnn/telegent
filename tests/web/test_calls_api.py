@@ -132,9 +132,14 @@ class _FakeSession:
         self.duration_seconds = 42
         self.end_reason: str | None = None
         self.hangups: list[str | None] = []
+        self.owner: _FakeApp | None = None
 
     def schedule_hangup(self, min_wait: float = 0.0, *, reason: str = "ai_end_call") -> None:
         self.hangups.append(reason)
+        # Meniru produksi: sesi yang selesai dibuang dari daftar, dan itulah
+        # sinyal drain. Tanpa ini setiap shutdown menunggu timeout penuh.
+        if self.owner is not None and self in self.owner._sessions:
+            self.owner._sessions.remove(self)
 
 
 class _FakeApp:
@@ -142,6 +147,8 @@ class _FakeApp:
 
     def __init__(self, sessions: list[_FakeSession]) -> None:
         self._sessions = sessions
+        for session in sessions:
+            session.owner = self
 
     def active_sessions(self) -> list[_FakeSession]:
         return list(self._sessions)

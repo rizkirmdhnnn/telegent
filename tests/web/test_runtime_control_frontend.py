@@ -120,12 +120,24 @@ def test_bar_restart_muncul_dari_status_runtime() -> None:
     assert "<RestartPendingBar />" in layout, "bar belum dipasang di app shell"
 
 
-def test_kontrol_runtime_dipakai_di_dashboard_dan_shell() -> None:
+def test_kontrol_runtime_hanya_di_dashboard() -> None:
+    """Kontrol runtime tinggal di dashboard (sesuai F2).
+
+    Sempat diduplikasi di header app-shell; dua klaster tombol identik
+    dalam satu layar hanya membingungkan, jadi cukup satu.
+    """
     dashboard = (SRC_DIR / "routes/(app)/+page.svelte").read_text(encoding="utf-8")
     assert "RuntimeControl" in dashboard
 
     layout = (SRC_DIR / "routes/(app)/+layout.svelte").read_text(encoding="utf-8")
-    assert "RuntimeControl" in layout
+    assert "RuntimeControl" not in layout, "kontrol runtime terduplikasi di shell"
+
+
+def test_dashboard_menampilkan_error_runtime() -> None:
+    """F2 DoD: galat runtime tampil di dashboard lengkap dengan tindakan lanjutan."""
+    dashboard = (SRC_DIR / "routes/(app)/+page.svelte").read_text(encoding="utf-8")
+    assert "last_error" in dashboard
+    assert "dashboard.fix_config" in dashboard
 
 
 def test_error_runtime_punya_aksi_lanjutan() -> None:

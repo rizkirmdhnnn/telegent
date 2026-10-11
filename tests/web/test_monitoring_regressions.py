@@ -206,8 +206,10 @@ async def test_runtime_error_terbit_saat_start_gagal(
     status = await controller.start()
 
     assert status.state.value == "error"
-    assert [nama for nama, _ in events] == ["runtime.error"]
-    assert events[0][1]["message"]
+    nama = [nama for nama, _ in events]
+    # `status` terbit lebih dulu (transisi STARTING), lalu `runtime.error`.
+    assert nama == ["status", "runtime.error"]
+    assert events[-1][1]["message"]
 
 
 async def test_status_event_terbit_setelah_berhenti(store: SettingsStore, tmp_path: Path) -> None:

@@ -236,13 +236,16 @@ Semua tabel punya `created_at`/`updated_at` (UTC) kecuali dinyatakan lain.
 ### 5.10 Pembersihan retensi (Q15)
 Dijalankan oleh `RetentionCleaner` (`retention_store.py`), disambungkan di `lifespan`:
 
-- **Satu siklus saat boot**, lalu **tiap 24 jam** (Q15).
+- **Satu siklus saat boot**, lalu **tiap 24 jam** (Q15). Siklus boot berjalan di
+  **task background** agar panel siap melayani tanpa menunggu pemindaian database.
 - `calls_retention_days`: hapus `call_record` yang `started_at`-nya lebih tua dari
   ambang — transkrip & tool call ikut terhapus lewat cascade (`ON DELETE CASCADE`
   + `PRAGMA foreign_keys=ON`).
-- `transcripts_retention_days`: hapus `transcript_entry` **yatim** (induknya sudah
-  hilang) yang lebih tua dari ambang. Transkrip yang induknya masih ada sudah
-  terhapus saat `call_record` dihapus.
+- `transcripts_retention_days`: hapus `transcript_entry` yang `at`-nya lebih tua dari
+  ambang, **berdasar umur** — bukan hanya baris "yatim". Karena `call_record_id`
+  bersifat `NOT NULL` dengan cascade, baris yatim mustahil ada; memilih hanya yatim
+  membuat pengaturan ini tidak pernah menghapus apa pun.
+  `transcript_count` pada `call_record` yang tersisa dikoreksi setelah penghapusan.
 - **Nilai `0` berarti simpan selamanya** — bukan hapus semua.
 - `store_transcripts=false` tidak menonaktifkan pembersihan `call_record`.
 - Penghapusan per batch (`BATCH_SIZE=500`); log hanya melaporkan **jumlah baris**,

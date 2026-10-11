@@ -298,7 +298,8 @@
     "recent_empty": "No calls yet.",
     "view_all": "View all",
     "quick_calls": "Call list",
-    "quick_logs": "Live logs"
+    "quick_logs": "Live logs",
+    "fix_config": "Fix configuration"
   },
   "groups": {
     "model_ai": "AI Model & Intelligence",

@@ -29,14 +29,24 @@ _SESSION_NAME = "userbot_session"
 class _FakeSession:
     """Sesi panggilan palsu: mencatat hangup graceful & penutupan paksa."""
 
-    def __init__(self, user_id: int, *, auto_close: bool = True) -> None:
+    def __init__(
+        self, user_id: int, *, auto_close: bool = True, owner: Any = None
+    ) -> None:
         self.user_id = user_id
         self.auto_close = auto_close
+        self.owner = owner
         self.hangup_reasons: list[str] = []
         self.closed = False
 
     def schedule_hangup(self, min_wait: float = 0.0, *, reason: str) -> None:
         self.hangup_reasons.append(reason)
+        # Meniru produksi: `CallSession` yang selesai dibuang dari daftar sesi
+        # oleh callback `on_stop`, dan itulah sinyal drain. Tanpa ini drain
+        # selalu menunggu sampai timeout penuh.
+        # Hanya dilepas dari daftar; `closed` tetap False karena penutupan
+        # paksa adalah Salisbury yang dilakukan `shutdown()`/drain timeout.
+        if self.auto_close and self.owner is not None:
+            self.owner.sessions.pop(self.user_id, None)
 
 
 class _FakeTelegent:
@@ -124,7 +134,7 @@ def _configure(client: TestClient) -> None:
 def _add_session(runtime: RuntimeController, user_id: int) -> _FakeSession:
     """Sisipkan sesi aktif pada aplikasi yang sedang berjalan."""
     assert runtime.app is not None
-    session = _FakeSession(user_id)
+    session = _FakeSession(user_id, owner=runtime.app)
     runtime.app.sessions[user_id] = session  # type: ignore[attr-defined]
     return session
 

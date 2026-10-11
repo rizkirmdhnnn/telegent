@@ -144,40 +144,73 @@ async def delete_old_calls(db: Database, before: datetime) -> tuple[int, int]:
             return calls, tool_calls
 
 
-async def delete_orphan_transcripts(db: Database, before: datetime) -> int:
-    """Hapus `transcript_entry` yatim yang lebih tua dari `before`.
+async def delete_old_transcripts(db: Database, before: datetime) -> int:
+    """Hapus `transcript_entry` yang lebih tua dari `before`, dalam batches.
 
-    "Yatim" berarti `call_record_id`-nya tidak lagi ada (mis.-record dihapus
-    manual lewat SQL). Transkrip yang induknya masih ada ikut terhapus saat
-    `call_record` dihapus, jadi jalur ini hanya untuk sisa-sisa.
+   Dihapus langsung berdasarkan umur — bukan hanya baris "yatim". Versi
+    sebelumnya hanya memilih transkrip yang induknya sudah tidak ada; padahal
+    `call_record_id` bersifat `NOT NULL` dengan `ON DELETE CASCADE`, sehingga
+    baris yatim mustahil ada dan pengaturan retensi transkrip tidak pernah
+    menghapus apa pun.
+
+    `transcript_count` pada `call_record` yang tersisa dikoreksi supaya tidak
+    lagi menyatakan jumlah yang tidak benar.
     """
     total = 0
+    touched_calls: set[int] = set()
     while True:
         async with db.session() as session:
-            ids = list(
+            rows = (
                 (
                     await session.execute(
-                        select(models.TranscriptEntry.id)
-                        .where(
-                            models.TranscriptEntry.at < before,
-                            models.TranscriptEntry.call_record_id.not_in(
-                                select(models.CallRecord.id)
-                            ),
+                        select(
+                            models.TranscriptEntry.id,
+                            models.TranscriptEntry.call_record_id,
                         )
+                        .where(models.TranscriptEntry.at < before)
                         .limit(BATCH_SIZE)
                     )
                 )
-                .scalars()
                 .all()
             )
-            if not ids:
-                return total
+            if not rows:
+                break
+            ids = [int(row[0]) for row in rows]
+            touched_calls.update(int(row[1]) for row in rows)
             result = await session.execute(
                 delete(models.TranscriptEntry).where(models.TranscriptEntry.id.in_(ids))
             )
-        total += int(cast("CursorResult[Any]", result).rowcount or 0)
+            total += int(cast("CursorResult[Any]", result).rowcount or 0)
         if len(ids) < BATCH_SIZE:
-            return total
+            break
+
+    await recalc_transcript_counts(db, sorted(touched_calls))
+    return total
+
+
+async def recalc_transcript_counts(db: Database, call_ids: list[int]) -> None:
+    """Hitung ulang `transcript_count` untuk panggilan yang transkripnya berkurang."""
+    if not call_ids:
+        return
+    async with db.session() as session:
+        for start in range(0, len(call_ids), BATCH_SIZE):
+            batch = call_ids[start : start + BATCH_SIZE]
+            counts = dict(
+                (
+                    await session.execute(
+                        select(
+                            models.TranscriptEntry.call_record_id,
+                            func.count(models.TranscriptEntry.id),
+                        )
+                        .where(models.TranscriptEntry.call_record_id.in_(batch))
+                        .group_by(models.TranscriptEntry.call_record_id)
+                    )
+                ).all()
+            )
+            for call_id in batch:
+                record = await session.get(models.CallRecord, call_id)
+                if record is not None:
+                    record.transcript_count = int(counts.get(call_id, 0))
 
 
 async def cleanup(db: Database, policy: RetentionPolicy, *, now: datetime | None = None) -> CleanupResult:
@@ -193,7 +226,7 @@ async def cleanup(db: Database, policy: RetentionPolicy, *, now: datetime | None
 
     if policy.transcripts_enabled:
         result = result + CleanupResult(
-            transcripts=await delete_orphan_transcripts(
+            transcripts=await delete_old_transcripts(
                 db, cutoff(policy.transcripts_days, now=moment)
             )
         )
@@ -227,8 +260,17 @@ class RetentionCleaner:
             log.exception("Gagal menjalankan pembersihan retensi.")
             return CleanupResult()
 
-    async def loop(self, interval: float = DAILY_INTERVAL_SEC) -> None:
-        """Bersihkan lalu tunggu `interval`, berulang sampai task dibatalkan."""
+    async def loop(
+        self, interval: float = DAILY_INTERVAL_SEC, *, run_first: bool = False
+    ) -> None:
+        """Bersihkan lalu tunggu `interval`, berulang sampai task dibatalkan.
+
+        `run_first=True` menjalankan satu siklus sebelum tidur pertama (Q15). Itu
+        dipakai dari task background saat boot supaya panel tidak menunggu
+        pemindaian database sebelum siap melayani.
+        """
+        if run_first:
+            await self.run_once()
         while True:
             try:
                 await asyncio.sleep(interval)

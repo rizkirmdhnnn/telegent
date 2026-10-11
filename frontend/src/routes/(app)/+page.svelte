@@ -103,7 +103,17 @@
 				</p>
 			{/if}
 			<div class="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
-				<RuntimeControl />
+				{#if runtime.status.last_error}
+				<div
+					class="flex flex-col gap-1 rounded-lg border border-red-300 bg-red-50/70 p-3 text-xs text-red-700 sm:flex-row sm:items-center sm:justify-between dark:border-red-800 dark:bg-red-950/40 dark:text-red-400"
+				>
+					<span>{runtime.status.last_error}</span>
+					<a href="/settings">
+						<Button variant="outline" size="sm">{t('dashboard.fix_config')}</Button>
+					</a>
+				</div>
+			{/if}
+			<RuntimeControl />
 			</div>
 		</Card>
 

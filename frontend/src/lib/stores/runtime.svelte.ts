@@ -50,8 +50,6 @@ class RuntimeStore {
 	/** Panggilan aktif yang akan diakhiri graceful saat stop/restart. */
 	activeCalls = $derived(this.status.active_calls ?? 0);
 
-	/** Ringkasan dampak untuk dialog konfirmasi (dinyqtyakan di UI lewat `t()`). */
-	drainImpactKey = $derived(this.activeCalls > 0 ? 'runtime.confirm_drain' : '');
 
 	connect() {
 		if (typeof window === 'undefined' || this.es) return;

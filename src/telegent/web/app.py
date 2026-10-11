@@ -116,10 +116,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     app.state.retention = RetentionCleaner(db, store)
-    # F3: satu siklus pembersihan saat boot, lalu penjadwalan harian (Q15).
-    await app.state.retention.run_once()
+    # F3: satu siklus pembersihan saat boot lalu harian (Q15) — berjalan di task
+    # background supaya panel tidak menunggu pemindaian database saat start.
     retention_task = asyncio.create_task(
-        app.state.retention.loop(), name="telegent-retention"
+        app.state.retention.loop(run_first=True), name="telegent-retention"
     )
 
     configured = "siap" if await store.is_configured() else "belum lengkap"
