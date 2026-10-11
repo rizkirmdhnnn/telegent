@@ -18,6 +18,9 @@ DEFAULT_PORT = 8080
 DEFAULT_SESSION_TTL_HOURS = 168
 DEFAULT_DB_FILENAME = "telegent.db"
 
+#: Nama env yang mengaktifkan mode fake (lihat `telegent.web.fake`).
+FAKE_ENV = "TELEGENT_FAKE"
+
 # Lokasi hasil build SPA: repo (pengembangan) atau di dalam paket (produksi).
 _REPO_FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "build"
 _PACKAGED_FRONTEND_DIST = Path(__file__).resolve().parent / "static"
@@ -62,6 +65,8 @@ class BootstrapConfig:
     session_ttl_hours: int
     autostart_bot: bool
     frontend_dist: Path
+    #: Mode fake (bot & klien Telegram tiruan) — hanya lewat env `TELEGENT_FAKE=1`.
+    fake: bool = False
 
     @property
     def db_path(self) -> Path:
@@ -94,6 +99,10 @@ def load_bootstrap(
         else Path(os.getenv("TELEGENT_DATA_DIR", DEFAULT_DATA_DIR)).expanduser()
     ).resolve()
 
+    # Mode fake dibaca SEBELUM `load_dotenv` danlangsung dari environment proses:
+    # file `.env` tidak boleh pernah mengaktifkan mode tiruan.
+    fake = os.environ.get(FAKE_ENV, "").strip() == "1"
+
     # `.env` hanya sebagai fallback; variabel environment asli selalu menang.
     load_dotenv(override=False)
 
@@ -112,4 +121,5 @@ def load_bootstrap(
         session_ttl_hours=_env_int("TELEGENT_SESSION_TTL_HOURS", DEFAULT_SESSION_TTL_HOURS),
         autostart_bot=_env_bool("TELEGENT_AUTOSTART_BOT", True),
         frontend_dist=_resolve_frontend_dist(),
+        fake=fake,
     )

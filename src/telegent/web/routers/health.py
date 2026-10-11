@@ -27,4 +27,7 @@ async def healthz(request: Request) -> dict[str, object]:
         "service": "telegent-web",
         "version": __version__,
         "db": db_state,
+        # Mode fake sengaja terlihat dari health check: deployment e2e/berbasis
+        # tiruan harus mudah dikenali, bukan tersembunyi.
+        "fake": bool(getattr(request.app.state, "fake", False)),
     }

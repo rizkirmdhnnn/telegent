@@ -14,3 +14,19 @@ scripts/
 tests/
 .pytest_cache/
 .pyright/
+.ruff_cache/
+.playwright-mcp/
+userbot_session.session
+
+# Frontend: hanya source & lockfile yang perlu saat build image.
+# node_modules (134 MB) dan hasil build lokal harus TIDAK ikut build context —
+# image membangun ulang node_modules sendiri lewat `npm ci`.
+frontend/node_modules/
+frontend/build/
+frontend/.svelte-kit/
+frontend/.vite/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/.cache/
+frontend/coverage/

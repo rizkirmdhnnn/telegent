@@ -2,15 +2,33 @@ services:
   telegent:
     build: .
     image: telegent:latest
-    env_file: .env
+    # `.env` opsional: container tetap boot tanpa file ini (kredensial diisi dari
+    # panel). Migrasi dari deployment CLI: letakkan TELEGRAM_API_ID/HASH &
+    # GEMINI_API_KEY di .env, nilainya diimpor sekali ke database saat boot.
+    env_file:
+      - path: .env
+        required: false
     environment:
-      TELEGRAM_SESSION_DIR: /data
+      # Satu sumber kebenaran direktori data: DB, *.session, dan .secret_key.
+      TELEGENT_DATA_DIR: /data
+      # Di dalam container panel harus bind 0.0.0.0 (port di host tetap loopback).
+      TELEGENT_HOST: 0.0.0.0
+      TELEGENT_PORT: "8080"
+      TELEGENT_AUTOSTART_BOT: "true"
+      # Mode tiruan untuk pengujian. Kosong = normal. Jangan diisi `1` di
+      # produksi: bot & klien Telegram akan jadi tiruan (lihat docs).
+      TELEGENT_FAKE: ${TELEGENT_FAKE:-}
+    ports:
+      # Hanya host lokal yang bisa mengakses (Q16). Akses dari jaringan lain
+      # lewat VPN/tunnel — lihat docs/web-panel/deployment.md.
+      - "127.0.0.1:8080:8080"
     volumes:
-      # Menyimpan file *.session agar login Telegram bertahan antar restart.
+      # DB + *.session + .secret_key. JANGAN dihapus tanpa backup: kehilangan
+      # .secret_key membuat secret tersimpan tidak dapat dibaca lagi.
       - ./data:/data
     restart: unless-stopped
-    stdin_open: true
-    tty: true
+    # Beri waktu runtime menutup panggilan & database dengan rapi.
+    stop_grace_period: 30s
     # Panggilan P2P Telegram butuh UDP keluar. Mode bridge umumnya cukup
     # (relay/reflector Telegram). Bila media tidak tersambung, aktifkan host:
     # network_mode: host

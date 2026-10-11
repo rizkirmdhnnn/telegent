@@ -27,6 +27,11 @@ from telegent.web.db import Database
 from telegent.web.db.migrate import upgrade_to_head_async
 from telegent.web.errors import install_error_handlers
 from telegent.web.events import EventBus
+from telegent.web.fake import (
+    fake_app_factory,
+    fake_client_factory,
+    warn_if_fake_enabled,
+)
 from telegent.web.log_stream import BusLogHandler, LogRingBuffer, SecretRedactor
 from telegent.web.retention_store import RetentionCleaner
 from telegent.web.routers import ROUTERS
@@ -93,11 +98,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.events = bus
     app.state.log_buffer = log_buffer
     app.state.redactor = redactor
+    # Mode fake hanya aktif lewat `TELEGENT_FAKE=1` (lihat `telegent.web.fake`).
+    fake_on = cfg.fake and warn_if_fake_enabled()
+    app.state.fake = fake_on
     app.state.telegram_login = TelegramLoginService(
         db,
         store,
         data_dir=cfg.data_dir,
         redactor=redactor,
+        client_factory=fake_client_factory if fake_on else None,
     )
     cleanup_task = asyncio.create_task(
         app.state.telegram_login.cleanup_loop(), name="telegent-login-cleanup"
@@ -113,6 +122,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         event_sink=_publish_event(app),
         tool_config_provider=lambda: tool_configs_for_runtime(db),
         call_observer=app.state.call_recorder,
+        app_factory=(
+            fake_app_factory(
+                event_sink=_publish_event(app),
+                call_observer=app.state.call_recorder,
+            )
+            if fake_on
+            else None
+        ),
     )
 
     app.state.retention = RetentionCleaner(db, store)
@@ -261,6 +278,8 @@ def create_app(config: BootstrapConfig | None = None) -> FastAPI:
     app.state.telegram_login = None
     app.state.retention = None
     app.state.call_recorder = None
+    # Diisi pada lifespan; mencerminkan mode fake untuk `/api/healthz`.
+    app.state.fake = False
     # Sesi dibuat di luar lifespan agar pengujian tetap bisa memakai app tanpa boot.
     app.state.sessions = SessionManager(cfg.session_ttl_hours)
 
