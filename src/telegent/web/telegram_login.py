@@ -216,7 +216,7 @@ class TelegramLoginService:
         await self._discard_all_flows()
         client = self._build_client(credentials)
         try:
-            await client.start()
+            await self._open_client(client)
             sent = await client.send_code(normalized)
         except Exception as exc:  # noqa: BLE001 - semua galat dipetakan ke kode
             await self._close_client(client)
@@ -407,7 +407,7 @@ class TelegramLoginService:
         credentials = await self.credentials()
         client = self._build_client(credentials)
         try:
-            await client.start()
+            await self._open_client(client)
         except Exception as exc:  # noqa: BLE001 - semua galat dipetakan ke kode
             await self._close_client(client)
             raise await self._record_failure(exc) from exc
@@ -423,10 +423,27 @@ class TelegramLoginService:
             return self._clients.pop(flow_id, None)
 
     @staticmethod
+    async def _open_client(client: Any) -> bool:
+        """Buka koneksi **tanpa** memunculkan prompt autentikasi.
+
+        `Client.start()` memancing `authorize()` yang meminta nomor telepon
+        lewat stdin bila sesi belum terotorisasi — pada container tanpa TTY itu
+        menggantung. `connect()` hanya Establishing koneksi dan mengembalikan
+        apakah sesi sudah terotorisasi; otorisasi kita lakukan sendiri lewat
+        `send_code`/`sign_in`/`check_password`.
+        """
+        return bool(await client.connect())
+
+    @staticmethod
     async def _close_client(client: Any) -> None:
-        """Tutup klien tanpa pernah menggagalkan alur login."""
+        """Tutup koneksi tanpa pernah menggagalkan alur login.
+
+        Klien login tidak pernah di-`start()` (jadi tidak `initialize()`),
+        maka `stop()` akan melempar; `disconnect()` yang tepat.
+        """
         try:
-            await client.stop()
+            if getattr(client, "is_connected", False):
+                await client.disconnect()
         except Exception:  # noqa: BLE001 - klien yang gagal ditutup cukup dilupakan
             log.debug("Gagal menutup klien login Telegram.", exc_info=True)
 
@@ -510,7 +527,13 @@ class TelegramLoginService:
 
         client = self._build_client(credentials)
         try:
-            await client.start()
+            # `connect()` mengembalikan True bila sesi sudah terotorisasi.
+            # Bila tidak, tidak ada yang bisa di-logout di sisi Telegram dan
+            # `start()` akan memicu prompt stdin — jadi jangan dipanggil.
+            if not await self._open_client(client):
+                return None
+            # `log_out()` memanggil `stop()` yang butuh klien ter-initialize.
+            await client.initialize()
             await client.log_out()
         except Exception as exc:  # noqa: BLE001 - kegagalan remote tidak fatal
             return map_exception(exc)

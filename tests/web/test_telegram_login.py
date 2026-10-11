@@ -591,3 +591,95 @@ async def test_redactor_mendaftarkan_phone_code_hash(
 
     assert redactor.redact(f"hash={SECRET_CODE_HASH}") == "hash=[REDACTED]"
     assert redactor.redact(f"hash={_API_HASH}") == "hash=[REDACTED]"
+
+# ------------------------------- regresi: jangan pernah pakai Client.start()
+
+
+async def test_login_tidak_pernah_memakai_start(
+    service: TelegramLoginService,
+) -> None:
+    """`Client.start()` memicu prompt nomor telepon di stdin bila sesi kosong.
+
+    Pada container tanpa TTY itu menggantung, dan user melihat
+    "Enter phone number or bot token:" lalu login gagal.
+    Klien tiruan menolak `start()`, jadi tes ini mengunci kelas bug tersebut.
+
+    Regresi nyata: ditemukan lewat smoke test `docker compose up` (2026-10-11),
+    bukan lewat tes — karena tanpa TTY, prompt hanya muncul di container.
+    """
+    from web_helpers import FakeTelegramClient
+
+    start_dipanggil = 0
+    asli = FakeTelegramClient.start
+
+    async def start_paksa_gagal(self):  # type: ignore[no-untyped-def]
+        nonlocal start_dipanggil
+        start_dipanggil += 1
+        raise AssertionError("klien login memanggil Client.start()")
+
+    FakeTelegramClient.start = start_paksa_gagal  # type: ignore[assignment]
+    try:
+        start = await service.start(_PHONE)
+        await service.verify(start.flow_id, _CODE)
+    finally:
+        FakeTelegramClient.start = asli  # type: ignore[assignment]
+
+    assert start_dipanggil == 0
+
+
+async def test_remote_logout_lewati_klien_yg_belum_terotorisasi(
+    service: TelegramLoginService, database: Database
+) -> None:
+    """Sesi belum terotorisasi → tidak ada yang bisa di-logout, dan tak ada prompt.
+
+    Kalau jalur ini memakai `start()`, Pyrogram akan meminta nomor telepon di
+    stdin dan administrator akan menggantung tanpa bisa membatalkan.
+    """
+    from web_helpers import FakeTelegram
+
+    await service.start(_PHONE)
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    # Klien berikutnya dibuat dalam keadaan belum terotorisasi.
+    FakeTelegram.authorized = False
+    hasil = await service.logout()
+
+    assert hasil["remote_error"] is None
+    assert not any(c.logged_out for c in FakeTelegram.instances[-1:]), (
+        "log_out() tidak boleh dipanggil pada klien yang belum terotorisasi"
+    )
+
+
+def test_pabrik_klien_login_tidak_menetapkan_nomor_telepon() -> None:
+    """Klien login dibangun tanpa nomor telepon; itu pemicu `authorize()`."""
+    from telegent.web.telegram_login import (
+        TelegramCredentials,
+        default_client_factory,
+    )
+
+    dibuat = {}
+
+    class _Tangkap:
+        def __init__(self, name, **kwargs):
+            dibuat["name"] = name
+            dibuat.update(kwargs)
+
+        async def start(self):  # tidak akan dipakai
+            raise AssertionError
+
+    import telegent.web.telegram_login as modul
+
+    _ClientAsli = modul.Client
+    modul.Client = _Tangkap  # type: ignore[assignment]  # type: ignore[assignment]
+    try:
+        default_client_factory(
+            TelegramCredentials(api_id=1, api_hash="h", session_name="s"),
+            Path("/tmp"),
+        )
+    finally:
+        modul.Client = _ClientAsli
+
+    assert dibuat.get("phone_number") in (None, ""), (
+        "menyetel phone_number membuat start() ikut interactive login"
+    )

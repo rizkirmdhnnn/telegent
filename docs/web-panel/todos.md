@@ -126,5 +126,9 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 - [x] `docs/web-panel` disinkronkan dengan implementasi
 - [x] README + dokumentasi deployment diperbarui
 - [x] Smoke test container bersih → panel boot, DB + `.secret_key` terbentuk
-- [ ] Smoke test panggilan nyata (butuh kredensial Telegram/Gemini asli; belum
-      dilakukan karena di luar lingkungan CI)
+- [ ] Smoke test panggilan nyata (butuh kredensial Telegram/Gemini asli).
+      **Sudah pernah dijalankan di container** (2026-10-11) dan langsung
+      membongkar bug nyata: `Client.start()` memicu prompt nomor telepon di
+      stdin, sehingga login Telegram dari panel selalu gagal dengan
+      `telegram_error`. Sudah diperbaiki (lihat `telegram_login._open_client`).
+      Sisa: konfirmasi satu panggilan suara sungguhan.

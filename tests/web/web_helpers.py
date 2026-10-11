@@ -91,6 +91,7 @@ class FakeTelegramClient:
         self.api_hash = self.credentials.api_hash
         self.started = False
         self.stopped = False
+        self.is_connected = False
         self.logged_out = False
         self.sent_to: str | None = None
         self.signed_in_with: tuple[str, str, str | None] | None = None
@@ -101,7 +102,23 @@ class FakeTelegramClient:
         FakeTelegram.instances.append(self)
 
     async def start(self) -> None:
-        self.started = True
+        # `Client.start()` pada Pyrogram memancing prompt nomor telepon di stdin
+        # bila sesi belum terotorisasi. Klien login TIDAK BOLEH memakainya.
+        raise AssertionError(
+            "klien login tidak boleh memakai start(): itu memicu prompt stdin"
+        )
+
+    async def connect(self) -> bool:
+        self.is_connected = True
+        # Dibaca dari kelas supaya bisa diatur per-skenario pengujian.
+        return FakeTelegram.authorized
+
+    async def disconnect(self) -> None:
+        self.is_connected = False
+        self.stopped = True
+
+    async def initialize(self) -> None:
+        self.initialized = True
 
     async def stop(self) -> None:
         self.stopped = True
@@ -142,12 +159,15 @@ class FakeTelegram:
     password_error: BaseException | None = None
     send_code_error: BaseException | None = None
     get_me_error: BaseException | None = None
+    #: False → `connect()` mengembalikan False (sesi belum terotorisasi).
+    authorized: bool = True
     phone_code_hash: str = SECRET_CODE_HASH
     me: Any = SimpleNamespace(id=5550001, username="telegent_bot", first_name="Telegent")
     instances: list[FakeTelegramClient] = []
 
     @classmethod
     def reset(cls) -> None:
+        cls.authorized = True
         cls.sign_in_error = None
         cls.password_error = None
         cls.send_code_error = None
