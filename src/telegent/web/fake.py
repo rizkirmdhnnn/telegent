@@ -26,7 +26,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Optional
 
-from pyrogram.errors import BadRequest
+from pyrogram.errors import PhoneCodeInvalid
 
 from telegent.app import TelegentApp
 from telegent.config import Settings
@@ -145,7 +145,10 @@ class FakeTelegramClient:
 
     async def sign_in(self, phone: str, code: str, **_kwargs: Any) -> Any:
         if code != FAKE_LOGIN_CODE:
-            raise BadRequest("Kode login salah (mode fake: gunakan 12345)")
+            # Pengecualian yang SAMA dengan Pyrogram asli: `PhoneCodeInvalid` agar
+            # panel benar-benar menguji pemetaan kode `code_invalid`, bukan
+            # `telegram_error` generik yang tidak akan pernah terjadi di produksi.
+            raise PhoneCodeInvalid
         log.info("[fake] Login tiruan berhasil untuk %s.", mask_phone(phone))
         return self._me
 

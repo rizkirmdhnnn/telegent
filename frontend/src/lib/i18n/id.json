@@ -99,7 +99,11 @@
     "allowed_user_ids_hint": "Tekan Enter atau koma untuk menambahkan ID pengguna Telegram. Kosongkan untuk menerima semua panggilan.",
     "applied": "Perubahan diterapkan.",
     "restart_pending_keys": "Pengaturan tertunda",
-    "restart_pending_generic": "Beberapa pengaturan berlabel Perlu Restart telah diubah."
+    "restart_pending_generic": "Beberapa pengaturan berlabel Perlu Restart telah diubah.",
+    "unsaved_changes": "{n} perubahan belum disimpan",
+    "audio_readonly_desc": "Konfigurasi internal format audio WebRTC / Telegram dan resampling Gemini (read-only).",
+    "show_advanced": "Tampilkan",
+    "hide_advanced": "Sembunyikan"
   },
   "credentials": {
     "title": "Kredensial API",

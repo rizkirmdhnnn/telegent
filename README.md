@@ -181,11 +181,13 @@ npm install
 npm run check                    # svelte-check
 npm run test                     # unit test (Vitest)
 npm run build                    # build SPA produksi
-npm run test:e2e                 # Playwright (butuh `npm run build` + Python)
+npm run test:e2e                 # Playwright (server & build ditangani otomatis)
 ```
 
-Frontend memakai cache lokal `~/.cache/ms-playwright`; jalankan
-`npx playwright install chromium` sekali bila belum terpasang.
+E2E menjalankan proses Python sungguhan dalam mode tiruan (`TELEGENT_FAKE=1`):
+tidak ada kredensial dan tidak ada koneksi ke Telegram/Gemini. Frontend memakai
+cache browser di `~/.cache/ms-playwright`; jalankan `npx playwright install
+chromium` sekali bila belum terpasang.
 
 ---
 

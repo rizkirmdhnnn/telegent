@@ -182,13 +182,23 @@ curl -s http://127.0.0.1:8080/api/healthz   # {"fake": true, ...}
 
 Kode OTP yang diterima mode fake: `12345`.
 
+`TELEGENT_IGNORE_DOTENV=1` juga dipasang oleh runner E2E: tanpa itu, `.env` di
+root repo ikut terimpor ke database pengujian dan skenario "panel kosong" tidak
+pernah benar-benar teruji. Environment proses tetap dipakai — yang diabaikan hanya
+berkas `.env`.
+
 Menjalankan E2E secara lokal:
 
 ```bash
 cd frontend
-npm run build       # SPA harus dibangun; server menyajikannya dari build/
-npm run test:e2e
+npx playwright install chromium   # sekali saja
+npm run test:e2e                  # server + build ditangani `webServer`
+npm run test:e2e:ui               # mode interaktif
 ```
+
+Server E2E memakai direktori data `.e2e-data/` di root repo yang **selalu
+dihapus** sebelum start, jadi setiap berjalan mulai dari kondisi kosong. Artefak
+laporan ada di `frontend/playwright-report/` dan `frontend/test-results/`.
 
 Lihat [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) untuk
 persis langkah yang dijalankan di CI.

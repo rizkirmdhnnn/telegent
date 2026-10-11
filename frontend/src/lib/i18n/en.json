@@ -99,7 +99,11 @@
     "allowed_user_ids_hint": "Press Enter or comma to add Telegram user IDs. Leave empty to allow all callers.",
     "applied": "Changes applied.",
     "restart_pending_keys": "Pending settings",
-    "restart_pending_generic": "Some settings marked 'Needs Restart' were changed."
+    "restart_pending_generic": "Some settings marked 'Needs Restart' were changed.",
+    "unsaved_changes": "{n} unsaved changes",
+    "audio_readonly_desc": "Internal configuration for WebRTC / Telegram audio format and Gemini resampling (read-only).",
+    "show_advanced": "Show",
+    "hide_advanced": "Hide"
   },
   "credentials": {
     "title": "API Credentials",

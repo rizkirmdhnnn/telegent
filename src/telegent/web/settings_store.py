@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from telegent.config import Settings
 from telegent.web.audit import AuditEntry, record_many
+from telegent.web.bootstrap import dotenv_enabled
 from telegent.web.crypto import SecretCipher, mask
 from telegent.web.db import models
 from telegent.web.db.base import Database
@@ -317,8 +318,13 @@ class SettingsStore:
             if await self._load_rows(session):
                 return 0
 
+        # `Settings()` membaca `.env` sendiri lewat pydantic-settings, terpisah dari
+        # `load_dotenv` di bootstrap. `TELEGENT_IGNORE_DOTENV` harus dihormati di
+        # sini juga — kalau tidak, impor berjalan setengah jalan pada container
+        # dan E2E: panel tetap "siap" dari `.env` yang tidak sengaja ikut terbaca.
+        extra: dict[str, Any] = {} if dotenv_enabled() else {"_env_file": None}
         try:
-            legacy = Settings()  # pyright: ignore[reportCallIssue]  # baca .env + env
+            legacy = Settings(**extra)
         except Exception:  # noqa: BLE001 - .env lama belum lengkap
             log.info("Tidak ada konfigurasi .env lama untuk diimpor.")
             return 0

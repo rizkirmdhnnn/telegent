@@ -79,10 +79,30 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 
 ## Fase 5 — Hardening & rilis
 
-- [ ] **G1** Packaging single-container (Docker multi-stage) + CLI `--no-web` + docs — L
-- [ ] **H1** Test backend (API, auth, crypto, settings, runtime) — L
-- [ ] **H2** Test frontend (unit + svelte-check) — M
-- [ ] **H3** E2E Playwright + perluasan CI — L
+> **Status: selesai** (branch `feat/web-panel-phase-5`). 693 tes pytest hijau,
+> pyright & svelte-check bersih, 76 tes Vitest hijau, 15 skenario Playwright
+> hijau. Image Docker tunggal terbangun tanpa Node dan panel disajikan dari `/data`.
+>
+> Keputusan yang diambil:
+> - **`TELEGENT_DATA_DIR` jadi satu sumber kebenaran** direktori data (sebelumnya
+>   Docker memakai `TELEGRAM_SESSION_DIR`, panel memakai `TELEGENT_DATA_DIR`).
+>   Alias lama tetap dibaca `Settings` untuk kompatibilitas, tapi compose/
+>   `Dockerfile` hanya menyetel yang baru.
+> - **Mode fake** (`telegent.web.fake`) hanya aktif lewat `TELEGENT_FAKE=1` yang
+>   dibaca dari environment proses **sebelum** `load_dotenv`, sehingga `.env`
+>   tidak pernah menyalakannya. Peringatan mencolok + terlihat di `/api/healthz`.
+> - **`TELEGENT_IGNORE_DOTENV=1`** mematikan pembacaan `.env` sepenuhnya
+>   (`load_dotenv` *dan* `Settings()`), dipakai container & E2E agar kredensial
+>   developer tidak ikut terimpor.
+> - **Tiga bug produksi ditemukan oleh tes Fase 5** dan diperbaiki:
+>   `t(key, '')` membocorkan kunci mentah ke UI; `ThemeStore` melempar di
+>   lingkungan tanpa `matchMedia`; dan `$state(new Set())` yang **tidak reaktif**
+>   di Svelte 5 membuat tombol "Simpan Perubahan" selalu disabled.
+
+- [x] **G1** Packaging single-container (Docker multi-stage) + CLI `--no-web` + docs — L
+- [x] **H1** Test backend (API, auth, crypto, settings, runtime) — L
+- [x] **H2** Test frontend (unit + svelte-check) — M
+- [x] **H3** E2E Playwright + perluasan CI — L
 
 ---
 
@@ -93,7 +113,9 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 - [x] `uv run pytest -q` hijau
 - [x] `uv run pyright src/telegent` hijau
 - [x] `svelte-check` hijau
-- [ ] Playwright hijau
+- [x] Playwright hijau
 - [x] `docs/web-panel` disinkronkan dengan implementasi
-- [ ] README + dokumentasi deployment diperbarui
-- [ ] Smoke test container bersih → panggilan nyata
+- [x] README + dokumentasi deployment diperbarui
+- [x] Smoke test container bersih → panel boot, DB + `.secret_key` terbentuk
+- [ ] Smoke test panggilan nyata (butuh kredensial Telegram/Gemini asli; belum
+      dilakukan karena di luar lingkungan CI)

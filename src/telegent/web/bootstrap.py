@@ -21,6 +21,15 @@ DEFAULT_DB_FILENAME = "telegent.db"
 #: Nama env yang mengaktifkan mode fake (lihat `telegent.web.fake`).
 FAKE_ENV = "TELEGENT_FAKE"
 
+#: Nama env untuk **menolak** pembacaan `.env`.
+#:
+#: Import `.env` adalah jalur migrasi dari deployment CLI. Pada container dan
+#: pengujian end-to-end, kebetulan ada `.env` di root repo justru berbahaya: nilai
+#: lama ikut terimpor sehingga skenario "panel kosong" tidak pernah teruji, dan
+#: kredensial developer bisa bocor ke artefak tes. Set `1` untuk memaksa panel
+#: hanya membaca environment.
+IGNORE_DOTENV_ENV = "TELEGENT_IGNORE_DOTENV"
+
 # Lokasi hasil build SPA: repo (pengembangan) atau di dalam paket (produksi).
 _REPO_FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "build"
 _PACKAGED_FRONTEND_DIST = Path(__file__).resolve().parent / "static"
@@ -84,6 +93,17 @@ class BootstrapConfig:
         return self.data_dir
 
 
+def dotenv_enabled() -> bool:
+    """True bila berkas `.env` boleh dibaca sebagai sumber konfigurasi.
+
+    Satu sumber kebenaran untuk keputusan ini: dipakai oleh `load_bootstrap`
+    (untuk `load_dotenv`) **dan** `SettingsStore.import_env_once` (yang memakai
+    `Settings`, membaca `.env` lewat pydantic-settings). Kalau keduanya punya
+    logikanya sendiri, import bisa berjalanlogika sendiri, import bisa berjalan setengah jalan pada mode fake/container.
+    """
+    return not _env_bool(IGNORE_DOTENV_ENV, False)
+
+
 def load_bootstrap(
     *,
     data_dir: Path | None = None,
@@ -104,7 +124,9 @@ def load_bootstrap(
     fake = os.environ.get(FAKE_ENV, "").strip() == "1"
 
     # `.env` hanya sebagai fallback; variabel environment asli selalu menang.
-    load_dotenv(override=False)
+    # `TELEGENT_IGNORE_DOTENV=1` mematikan prosesnya sepenuhnya (container & E2E).
+    if dotenv_enabled():
+        load_dotenv(override=False)
 
     resolved_db_url = db_url or os.getenv("TELEGENT_DB_URL") or ""
     if not resolved_db_url:

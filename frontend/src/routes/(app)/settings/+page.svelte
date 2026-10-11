@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { apiFetch, ApiError } from '$lib/api';
-	import { t } from '$lib/i18n';
+	import { t, tParams } from '$lib/i18n';
 	import Button from '$lib/components/ui/Button.svelte';
 	import SettingField from '$lib/components/settings/SettingField.svelte';
 
@@ -40,7 +41,10 @@
 	let groups = $state<SettingGroupData[]>([]);
 	let initialValues = $state<Record<string, any>>({});
 	let currentValues = $state<Record<string, any>>({});
-	let dirtyKeys = $state<Set<string>>(new Set());
+	// `SvelteSet`, bukan `new Set()`: proxy `$state` di Svelte 5 hanya mencakup
+	// object & array, jadi `Set` biasa tidak memicu render ulang — tombol "Simpan
+	// Perubahan" akan tetap disabled setelah admin mengubah nilai.
+	let dirtyKeys = new SvelteSet<string>();
 	let toastMessage = $state('');
 	let toastError = $state('');
 	let fieldErrors = $state<Record<string, string>>({});
@@ -152,7 +156,7 @@
 		<div class="flex items-center gap-2">
 			{#if dirtyKeys.size > 0}
 				<span class="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-					{dirtyKeys.size} perubahan belum disimpan
+					{tParams('settings.unsaved_changes', { n: dirtyKeys.size })}
 				</span>
 			{/if}
 			<Button
@@ -223,10 +227,12 @@
 								<h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200">
 									{groupTitle(group.group)}
 								</h3>
-								<p class="text-xs text-slate-500">Konfigurasi internal format audio WebRTC / Telegram dan resampling Gemini (read-only).</p>
+								<p class="text-xs text-slate-500">{t('settings.audio_readonly_desc')}</p>
 							</div>
 							<Button variant="ghost" size="sm" onclick={() => (showAdvanced = !showAdvanced)}>
-								{showAdvanced ? 'Sembunyikan' : 'Tampilkan'}
+								{showAdvanced
+									? t('settings.hide_advanced')
+									: t('settings.show_advanced')}
 							</Button>
 						</div>
 

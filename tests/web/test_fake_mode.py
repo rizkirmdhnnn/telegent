@@ -10,9 +10,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Any
+from typing import Any
 
 import pytest
-from pyrogram.errors import BadRequest
+from pyrogram.errors import PhoneCodeInvalid
 
 from telegent.config import Settings
 from telegent.web import fake
@@ -108,6 +109,82 @@ def test_env_proses_mengaktifkan(
     assert cfg.fake is True
 
 
+# --------------------------------------------------- penolakan pembacaan .env
+
+
+def test_dotenv_biasa_tetap_dibaca(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tanpa flag, migrasi dari `.env` lama tetap berjalan (docs §4)."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("TELEGENT_FAKE=1\n", encoding="utf-8")
+    monkeypatch.delenv("TELEGENT_FAKE", raising=False)
+
+    cfg = load_bootstrap(data_dir=tmp_path / "data")
+
+    # `.env` tidak mengaktifkan mode fake meski isinya memuat variabel itu.
+    assert cfg.fake is False
+
+
+def test_ignore_dotenv_mematikan_pembacaan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`TELEGENT_IGNORE_DOTENV=1` membuat container & E2E murni dari environment.
+
+    Tanpa ini, `.env` developer ikut terimpor ke database pengujian sehingga
+    skenario "panel kosong" tidak pernah benar-benar teruji.
+    """
+    from telegent.web.bootstrap import dotenv_enabled
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("TELEGENT_PORT=9999\n", encoding="utf-8")
+
+    assert dotenv_enabled() is True
+
+    monkeypatch.setenv("TELEGENT_IGNORE_DOTENV", "1")
+    assert dotenv_enabled() is False
+
+    cfg = load_bootstrap(data_dir=tmp_path / "data")
+    assert cfg.port != 9999
+
+
+async def test_import_env_dilewati_saat_dotenv_dimatikan(
+    store: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Impor dari **berkas** `.env` harus dilewati, bukan hanya `load_dotenv`.
+
+    `Settings()` membaca `.env` sendiri lewat pydantic-settings; kalau flag hanya
+    dipasang di satu tempat, impor berjalan setengah jalan dan kredensial
+    developer ikut masuk ke database pengujian.
+    """
+    (tmp_path / ".env").write_text(
+        "TELEGRAM_API_ID=999\n"
+        "TELEGRAM_API_HASH=0123456789abcdef0123456789abcdef\n"
+        "GEMINI_API_KEY=AIzaSy0123456789012345678901234567890\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TELEGENT_IGNORE_DOTENV", "1")
+
+    assert await store.import_env_once() == 0
+    assert await store.get("telegram_api_id") == 0
+
+
+async def test_import_env_normal_membaca_berkas_env(
+    store: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Tanpa flag, impor dari `.env` tetap berjalan (jalur migrasi §4)."""
+    (tmp_path / ".env").write_text(
+        "TELEGRAM_API_ID=4242\n"
+        "TELEGRAM_API_HASH=0123456789abcdef0123456789abcdef\n"
+        "GEMINI_API_KEY=AIzaSy0123456789012345678901234567890\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("TELEGENT_IGNORE_DOTENV", raising=False)
+
+    assert await store.import_env_once() > 0
+    assert await store.get("telegram_api_id") == 4242
+
+
 # ------------------------------------------------------- interval panggilan
 
 
@@ -157,12 +234,21 @@ def test_kode_otp_yang_diterima(tmp_path: Path) -> None:
 
 
 def test_kode_otp_lain_ditolak(tmp_path: Path) -> None:
-    """Kode salah harus jadi `BadRequest` — sama seperti Pyrogram aslinya."""
+    """Kode salah harus memakai exception yang SAMA dengan Pyrogram asli.
+
+    Kalau tiruan melempar exception generik, panel menampilkan kode
+    `telegram_error` — yang tidak akan pernah muncul di produksi, sehingga
+    pemetaan `code_invalid` justru tidak pernah teruji E2E.
+    """
+    from telegent.web.telegram_errors import map_exception
+
     credentials = fake.SimpleNamespace(session_name="s", api_id=1, api_hash="h")
     client = fake.FakeTelegramClient(credentials, tmp_path)
 
-    with pytest.raises(BadRequest):
+    with pytest.raises(PhoneCodeInvalid) as info:
         asyncio.run(client.sign_in("+6281234567890", "00000"))
+
+    assert map_exception(info.value).code == "code_invalid"
 
 
 def test_kode_hash_tidak_membocorkan_nomor(tmp_path: Path) -> None:

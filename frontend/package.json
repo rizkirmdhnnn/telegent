@@ -10,10 +10,14 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"verify": "npm run check && npm run test && npm run build"
+		"verify": "npm run check && npm run test && npm run build",
+		"test:e2e": "playwright test",
+		"test:e2e:ui": "playwright test --ui",
+		"e2e:server": "node ./scripts/e2e-server.mjs"
 	},
 	"devDependencies": {
 		"@lucide/svelte": "^1.55.0",
+		"@playwright/test": "^1.64.0",
 		"@sveltejs/adapter-static": "^3.0.6",
 		"@sveltejs/kit": "^2.16.0",
 		"@sveltejs/vite-plugin-svelte": "^4.0.0",
