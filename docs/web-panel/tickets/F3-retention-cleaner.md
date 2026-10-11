@@ -17,7 +17,7 @@ kebijakan retensi.
 - Tidak menyentuh `audit_log`.
 
 ## Deliverable
-- `src/telegent/web/retention.py`
+- `src/telegent/web/retention_store.py` (pola `*_store.py`, bukan `retention.py`)
 - Penjadwalan di `lifespan` (harian + saat boot)
 
 ## Langkah implementasi
@@ -26,11 +26,15 @@ kebijakan retensi.
 3. Jalankan dalam batch kecil; log ringkas (jumlah terhapus), tanpa data isi.
 
 ## Kriteria terima (Definition of Done)
-- [ ] Data melebihi retensi terhapus; data dalam rentang tetap.
-- [ ] `0` berarti tanpa batas (tidak menghapus).
-- [ ] `audit_log` tidak pernah terhapus.
-- [ ] Tes dengan data bertanggal buatan.
-- [ ] `pyright` hijau.
+- [x] Data melebihi retensi terhapus; data dalam rentang tetap.
+- [x] `0` berarti tanpa batas (tidak menghapus).
+- [x] `audit_log` tidak pernah terhapus.
+- [x] Tes dengan data bertanggal buatan.
+- [x] `pyright` hijau.
 
 ## Catatan teknis / pertanyaan
-- Q15 (jadwal harian).
+- **Q15 (jadwal):** satu siklus saat boot (`lifespan`), lalu task yang mengulang
+  tiap 24 jam. Kegagalan satu siklus dicatat dan tidak menghentikan penjadwalan.
+- **`transcript_entry`:** karena `call_record` dihapus dengan cascade, transkrip
+  yang masih punya induk ikut terhapus. Sisa "yatim" (induk hilang di luar
+  aplikasi) ditangani `delete_orphan_transcripts`.

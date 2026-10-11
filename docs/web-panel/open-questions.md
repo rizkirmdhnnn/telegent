@@ -59,8 +59,11 @@ bila tidak dikoreksi, implementasi memakai default.
 - **Q13 (E1): Simpan transkrip default.** `store_transcripts=true`; dapat dimatikan untuk
   privasi. *Default: true.*
 - **Q14 (E3): Export riwayat.** Sediakan ekspor CSV/JSON? *Default: v1 sertakan ekspor CSV.*
-- **Q15 (F3): Jadwal pembersihan retensi.** Harian saat idle (mis. 03:00 lokal) + saat boot.
-  *Default: harian.*
+- **Q15 (F3): Jadwal pembersihan retensi.** ~~Harian saat idle (mis. 03:00 lokal)
+  + saat boot.~~ **Diputuskan: harian (setiap 24 jam) + satu siklus saat boot.**
+  Alasannya: instance seringermatikan/dinyalakan ulang di hosting rumahan, sehingga
+  "jam 03:00" tidak pernah tercapai. Jadwal per-detik juga tidak perlu — data
+  tidak pernah bermasalah bila telat satu hari.
 - **Q16 (G1): Port default & bind.** `127.0.0.1:8080`. Untuk akses perangkat lain di LAN,
   set `TELEGENT_HOST=0.0.0.0` secara sadar. *Default: 127.0.0.1.*
 - **Q17 (H3): E2E tanpa Telegram/Gemini nyata.** Gunakan mode fake (fake live session &

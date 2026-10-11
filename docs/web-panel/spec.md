@@ -233,6 +233,21 @@ Semua tabel punya `created_at`/`updated_at` (UTC) kecuali dinyatakan lain.
 
 `audit_log` **tidak** dibersihkan oleh retensi transkrip.
 
+### 5.10 Pembersihan retensi (Q15)
+Dijalankan oleh `RetentionCleaner` (`retention_store.py`), disambungkan di `lifespan`:
+
+- **Satu siklus saat boot**, lalu **tiap 24 jam** (Q15).
+- `calls_retention_days`: hapus `call_record` yang `started_at`-nya lebih tua dari
+  ambang — transkrip & tool call ikut terhapus lewat cascade (`ON DELETE CASCADE`
+  + `PRAGMA foreign_keys=ON`).
+- `transcripts_retention_days`: hapus `transcript_entry` **yatim** (induknya sudah
+  hilang) yang lebih tua dari ambang. Transkrip yang induknya masih ada sudah
+  terhapus saat `call_record` dihapus.
+- **Nilai `0` berarti simpan selamanya** — bukan hapus semua.
+- `store_transcripts=false` tidak menonaktifkan pembersihan `call_record`.
+- Penghapusan per batch (`BATCH_SIZE=500`); log hanya melaporkan **jumlah baris**,
+  tanpa isi data. Kegagalan satu siklus tidak menghentikan penjadwalan.
+
 ---
 
 ## 6. API REST

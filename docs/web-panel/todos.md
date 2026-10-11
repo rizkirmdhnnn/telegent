@@ -70,10 +70,12 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 >   bila masih hidup. Drain diuji di `test_runtime.py` & `test_runtime_control.py`.
 > - Mode restart **in-process saja** pada fase ini; fallback container (Q4)
 >   tidak dikerjakan — packaging container adalah Fase 5 (G1).
+> - Pembersihan retensi (F3) memakai pola `retention_store.py`: satu siklus saat
+>   boot lalu task harian (Q15); `audit_log` tidak pernah ikut terhapus.
 
 - [x] **F1** API kontrol runtime (status/start/stop/restart/apply) — M
 - [x] **F2** UI kontrol runtime + indikator "butuh restart" + alur apply — M
-- [ ] **F3** Pembersihan retensi (scheduler) — S
+- [x] **F3** Pembersihan retensi (scheduler) — S
 
 ## Fase 5 — Hardening & rilis
 

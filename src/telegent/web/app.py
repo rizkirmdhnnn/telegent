@@ -28,6 +28,7 @@ from telegent.web.db.migrate import upgrade_to_head_async
 from telegent.web.errors import install_error_handlers
 from telegent.web.events import EventBus
 from telegent.web.log_stream import BusLogHandler, LogRingBuffer, SecretRedactor
+from telegent.web.retention_store import RetentionCleaner
 from telegent.web.routers import ROUTERS
 from telegent.web.runtime import RuntimeController
 from telegent.web.security import SessionManager
@@ -114,6 +115,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         call_observer=app.state.call_recorder,
     )
 
+    app.state.retention = RetentionCleaner(db, store)
+    # F3: satu siklus pembersihan saat boot, lalu penjadwalan harian (Q15).
+    await app.state.retention.run_once()
+    retention_task = asyncio.create_task(
+        app.state.retention.loop(), name="telegent-retention"
+    )
+
     configured = "siap" if await store.is_configured() else "belum lengkap"
     log.info(
         "Web panel siap (data=%s, db=%s, konfigurasi=%s, frontend=%s).",
@@ -132,12 +140,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.runtime.shutdown()
         # Antrean pencatatan panggilan dikuras sebelum database ditutup.
         await app.state.call_recorder.aclose()
+        retention_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await retention_task
         cleanup_task.cancel()
         with suppress(asyncio.CancelledError):
             await cleanup_task
         root_logger.removeHandler(log_handler)
         app.state.settings_store = None
         app.state.telegram_login = None
+        app.state.retention = None
         app.state.runtime = None
         app.state.call_recorder = None
         app.state.events = None
@@ -247,6 +259,7 @@ def create_app(config: BootstrapConfig | None = None) -> FastAPI:
     app.state.cipher = None
     app.state.settings_store = None
     app.state.telegram_login = None
+    app.state.retention = None
     app.state.call_recorder = None
     # Sesi dibuat di luar lifespan agar pengujian tetap bisa memakai app tanpa boot.
     app.state.sessions = SessionManager(cfg.session_ttl_hours)

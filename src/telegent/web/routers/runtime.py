@@ -16,7 +16,8 @@ konfirmasi.
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import APIRouter, Request
 
@@ -75,7 +76,7 @@ async def _run_action(
     before = runtime.status().to_dict()
     try:
         status = await operation()
-    except Exception as exc:  # noqa: BLE001 - kegagalan dicatat dulu, lalu diteruskan
+    except Exception as exc:
         await _record(
             db,
             action=action,

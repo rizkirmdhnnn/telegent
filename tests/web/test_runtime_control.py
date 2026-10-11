@@ -7,7 +7,8 @@ sudah login.
 
 from __future__ import annotations
 
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -41,7 +42,7 @@ class _FakeSession:
 class _FakeTelegent:
     """Pengganti `TelegentApp` yang mengelola sesi lewat dict sederhana."""
 
-    created: list["_FakeTelegent"] = []
+    created: list[_FakeTelegent] = []
     fail_start = False
 
     def __init__(self, settings: Settings) -> None:
