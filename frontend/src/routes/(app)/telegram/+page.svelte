@@ -139,22 +139,28 @@
 	}
 
 	/**
-	 * Jalankan bot: terapkan konfigurasi tertunda (memulai runtime bila sesi
-	 * baru saja dibuat). Endpoint apply sudah tersedia; tombol start/stop
-	 * eksplisit menyusul di tiket kontrol runtime.
+	 * Jalankan bot lewat kontrol runtime (F1/F2): `POST /runtime/start`.
+	 * Status respons dipakai langsung — termasuk `not_configured`/`needs_login`
+	 * yang bukan galat, sehingga UI bisa menampilkan arah tindakan berikutnya.
 	 */
 	async function startBot() {
 		startBusy = true;
 		actionError = null;
 		actionMessageKey = '';
 		try {
-			const hasil = await apiFetch<{ running: boolean; state: string }>('/runtime/apply', {
-				method: 'POST'
-			});
+			const ok = await runtime.start();
 			await runtime.fetchStatus();
-			actionMessageKey = hasil.running ? 'telegram.bot_running' : `status.${hasil.state}`;
-		} catch (err) {
-			actionError = toLocalized(err);
+			if (ok) {
+				actionMessageKey = runtime.status.running
+					? 'telegram.bot_running'
+					: `status.${runtime.status.state}`;
+			} else {
+				// Kegagalan aksi sudah diterjemahkan oleh store; tampilkan apa adanya.
+				actionError = {
+					code: 'unknown_error',
+					fallback: runtime.actionError ?? ''
+				};
+			}
 		} finally {
 			startBusy = false;
 		}

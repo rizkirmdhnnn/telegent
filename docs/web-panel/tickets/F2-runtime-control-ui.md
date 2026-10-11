@@ -27,11 +27,11 @@ memerlukan restart, dengan umpan balik status.
 4. Setelah restart/apply sukses → refresh status & bersihkan badge.
 
 ## Kriteria terima (Definition of Done)
-- [ ] Tombol kontrol sesuai status & mencegah aksi ganda saat transisi.
-- [ ] Konfirmasi menampilkan dampak (mis. "2 panggilan aktif akan diakhiri").
-- [ ] Apply menghilangkan badge & memperbarui status.
-- [ ] Error runtime tampil jelas dengan tindakan lanjut.
-- [ ] `svelte-check` hijau.
+- [x] Tombol kontrol sesuai status & mencegah aksi ganda saat transisi.
+- [x] Konfirmasi menampilkan dampak (mis. "2 panggilan aktif akan diakhiri").
+- [x] Apply menghilangkan badge & memperbarui status.
+- [x] Error runtime tampil jelas dengan tindakan lanjut.
+- [x] `svelte-check` hijau.
 
 ## Catatan teknis / pertanyaan
 - Kebijakan drain vs force saat restart dengan sesi aktif — tampilkan pilihan bila perlu.

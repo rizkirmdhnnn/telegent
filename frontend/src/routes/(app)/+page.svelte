@@ -7,6 +7,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import StatusBadge from '$lib/components/layout/StatusBadge.svelte';
+	import RuntimeControl from '$lib/components/runtime/RuntimeControl.svelte';
 	import { outcomeVariant, formatDuration } from '$lib/stores/calls.svelte';
 
 	const store = monitoring;
@@ -90,17 +91,20 @@
 
 	<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 		<Card title={t('dashboard.status_title')}>
-			<div class="flex items-center justify-between pt-1">
+			<div class="flex items-center justify-between gap-3 pt-1">
 				<StatusBadge />
 				<span class="text-xs font-medium text-slate-500 dark:text-slate-400">
 					{runtime.status.running ? t('dashboard.running') : t('dashboard.not_running')}
 				</span>
 			</div>
-			{#if runtime.status.last_error}
-				<div class="mt-3 rounded-md bg-red-50 p-2.5 text-xs text-red-600 dark:bg-red-950/30 dark:text-red-400">
-					{runtime.status.last_error}
-				</div>
+			{#if runtime.status.since}
+				<p class="mt-1 text-xs text-slate-400">
+					{t('dashboard.running_since')}: {new Date(runtime.status.since).toLocaleTimeString()}
+				</p>
 			{/if}
+			<div class="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+				<RuntimeControl />
+			</div>
 		</Card>
 
 		<Card title={t('dashboard.active_calls_title')} subtitle={t('dashboard.active_calls_hint')}>

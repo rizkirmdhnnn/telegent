@@ -4,7 +4,6 @@
 	import { t } from '$lib/i18n';
 	import Button from '$lib/components/ui/Button.svelte';
 	import SettingField from '$lib/components/settings/SettingField.svelte';
-	import RestartPendingBar from '$lib/components/settings/RestartPendingBar.svelte';
 
 	interface SettingSpec {
 		key: string;
@@ -42,8 +41,6 @@
 	let initialValues = $state<Record<string, any>>({});
 	let currentValues = $state<Record<string, any>>({});
 	let dirtyKeys = $state<Set<string>>(new Set());
-	let pendingRestart = $state(false);
-	let pendingRestartKeys = $state<string[]>([]);
 	let toastMessage = $state('');
 	let toastError = $state('');
 	let fieldErrors = $state<Record<string, string>>({});
@@ -68,8 +65,6 @@
 			schemaMap = sMap;
 
 			groups = settingsData.groups;
-			pendingRestart = settingsData.pending_restart;
-			pendingRestartKeys = settingsData.pending_restart_keys || [];
 
 			const inits: Record<string, any> = {};
 			for (const group of settingsData.groups) {
@@ -256,11 +251,4 @@
 		</div>
 	{/if}
 
-	<!-- Sticky Restart Pending Banner -->
-	{#if pendingRestart}
-		<RestartPendingBar
-			pendingKeys={pendingRestartKeys}
-			onapplied={loadSettings}
-		/>
-	{/if}
-</div>
+	</div>

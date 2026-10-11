@@ -72,7 +72,7 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 >   tidak dikerjakan — packaging container adalah Fase 5 (G1).
 
 - [x] **F1** API kontrol runtime (status/start/stop/restart/apply) — M
-- [ ] **F2** UI kontrol runtime + indikator "butuh restart" + alur apply — M
+- [x] **F2** UI kontrol runtime + indikator "butuh restart" + alur apply — M
 - [ ] **F3** Pembersihan retensi (scheduler) — S
 
 ## Fase 5 — Hardening & rilis

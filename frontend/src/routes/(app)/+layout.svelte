@@ -8,6 +8,8 @@
 	import StatusBadge from '$lib/components/layout/StatusBadge.svelte';
 	import LanguageSwitch from '$lib/components/layout/LanguageSwitch.svelte';
 	import ThemeSwitch from '$lib/components/layout/ThemeSwitch.svelte';
+	import RuntimeControl from '$lib/components/runtime/RuntimeControl.svelte';
+	import RestartPendingBar from '$lib/components/settings/RestartPendingBar.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 
 	interface Props {
@@ -169,6 +171,7 @@
 			</div>
 
 			<div class="flex items-center gap-3">
+				<RuntimeControl showRestart={false} />
 				<LanguageSwitch />
 				<ThemeSwitch />
 			</div>
@@ -176,6 +179,12 @@
 
 		<!-- Content -->
 		<main class="flex-1 p-6 md:p-8">
+			<!--
+				Bar "perubahan butuh restart" dibuat global di app shell: status
+				`pending_restart` berasal dari runtime store yang sudah SSE + polling,
+				jadi admin melihatnya di halaman mana pun.
+			-->
+			<RestartPendingBar />
 			{#if children}
 				{@render children()}
 			{/if}

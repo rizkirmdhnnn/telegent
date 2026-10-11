@@ -6,7 +6,6 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Input from '$lib/components/ui/Input.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
-	import RestartPendingBar from '$lib/components/settings/RestartPendingBar.svelte';
 
 	interface SettingsResponse {
 		groups: { group: string; items: { key: string; value: unknown; is_set: boolean }[] }[];
@@ -34,8 +33,6 @@
 	let geminiMessage = $state('');
 	let geminiError = $state('');
 
-	let pendingRestart = $state(false);
-	let pendingRestartKeys = $state<string[]>([]);
 
 	const tgDirty = $derived(apiId !== '' || apiHash !== '');
 	const geminiDirty = $derived(geminiApiKey !== '');
@@ -43,8 +40,6 @@
 	async function loadCurrentCredentials() {
 		try {
 			const res = await apiFetch<SettingsResponse>('/settings');
-			pendingRestart = res.pending_restart;
-			pendingRestartKeys = res.pending_restart_keys || [];
 
 			for (const g of res.groups) {
 				for (const item of g.items) {
@@ -242,10 +237,4 @@
 		<span>{t('credentials.next_step_desc')}</span>
 	</div>
 
-	{#if pendingRestart}
-		<RestartPendingBar
-			pendingKeys={pendingRestartKeys}
-			onapplied={loadCurrentCredentials}
-		/>
-	{/if}
-</div>
+	</div>
