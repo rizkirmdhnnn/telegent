@@ -14,7 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
-from telegent.app import EventSink, TelegentApp
+from telegent.app import EventSink, SessionNotAuthorized, TelegentApp
 from telegent.config import Settings
 from telegent.protocols import CallObserver
 from telegent.telegram.call_session import END_REASON_PANEL, CallSession
@@ -219,6 +219,13 @@ class RuntimeController:
             try:
                 await self._load_tool_configs()
                 await app.start()
+            except SessionNotAuthorized as exc:
+                # Sesi ada tapi belum terotorisasi — arahkan admin ke halaman login,
+                # bukan tampilkan galat teknis.
+                self._state = RuntimeState.NEEDS_LOGIN
+                self._last_error = str(exc)
+                log.info("Bot belum dijalankan: sesi Telegram belum terotorisasi.")
+                return self.status()
             except Exception as exc:  # noqa: BLE001 - kegagalan bot tidak mematikan web
                 self._state = RuntimeState.ERROR
                 self._last_error = self._safe_error(exc)

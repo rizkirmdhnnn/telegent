@@ -127,8 +127,11 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 - [x] README + dokumentasi deployment diperbarui
 - [x] Smoke test container bersih → panel boot, DB + `.secret_key` terbentuk
 - [ ] Smoke test panggilan nyata (butuh kredensial Telegram/Gemini asli).
-      **Sudah pernah dijalankan di container** (2026-10-11) dan langsung
-      membongkar bug nyata: `Client.start()` memicu prompt nomor telepon di
-      stdin, sehingga login Telegram dari panel selalu gagal dengan
-      `telegram_error`. Sudah diperbaiki (lihat `telegram_login._open_client`).
-      Sisa: konfirmasi satu panggilan suara sungguhan.
+      **Sudah berjalan di container** (2026-10-11) dan membongkar **dua** bug
+      nyata yang sama-sama berasal dari `Client.start()`:
+      1. jalur **login** panel (`telegram_login._open_client`),
+      2. jalur **runtime bot** (`app.TelegentApp._start_client`) — berkas sesi
+         ada tapi belum terotorisasi, sehingga admin melihat prompt stdin dan
+         `EOFError`.
+      Keduanya sudah diganti ke `connect()` dan diverifikasi ulang di container.
+      Sisa: konfirmasi satu panggilan suara sungguhan dari nomor Telegram.

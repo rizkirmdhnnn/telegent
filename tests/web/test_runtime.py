@@ -35,19 +35,47 @@ def _settings(**overrides: Any) -> Settings:
 
 
 class _FakeClient:
+    """Klien Pyrogram tiruan yang meniru alur tanpa prompt (`connect` dulu).
+
+    `start()` sengaja melempar: pada Pyrogram sungguhan `start()` memanggil
+    `authorize()` yang meminta nomor telepon di stdin bila sesi belum
+    terotorisasi — perilaku itu yang harus terhalang.
+    """
+
     instances: list["_FakeClient"] = []
+    #: False → `connect()` melaporkan sesi belum terotorisasi.
+    authorized: bool = True
 
     def __init__(self, *_args: Any, **_kwargs: Any) -> None:
         self.started = False
         self.stopped = False
+        self.is_connected = False
+        self.initialized = False
         self.handlers: list[Any] = []
         _FakeClient.instances.append(self)
 
     async def start(self) -> None:
+        raise AssertionError(
+            "TelegentApp tidak boleh memakai Client.start() (memicu prompt stdin)"
+        )
+
+    async def connect(self) -> bool:
         self.started = True
+        self.is_connected = True
+        return _FakeClient.authorized
+
+    async def disconnect(self) -> None:
+        self.is_connected = False
+
+    async def initialize(self) -> None:
+        self.initialized = True
+
+    async def invoke(self, *_args: Any, **_kwargs: Any) -> None:
+        return None
 
     async def stop(self) -> None:
         self.stopped = True
+        self.is_connected = False
 
     async def get_me(self) -> Any:
         return SimpleNamespace(id=99, first_name="Bot", username="bot")
@@ -76,6 +104,7 @@ def native_fakes(monkeypatch: pytest.MonkeyPatch) -> None:
         "telegent.app.genai.Client", lambda api_key=None: SimpleNamespace(api_key=api_key)
     )
     _FakeClient.instances.clear()
+    _FakeClient.authorized = True
 
 
 # ------------------------------------------------------- TelegentApp lifecycle
@@ -544,3 +573,64 @@ async def test_runtime_survive_konfigurasi_hilang(store, controller_factory) -> 
     status = await controller.refresh_settings()
     assert status.state is RuntimeState.STOPPED
     assert status.pending_restart == []
+
+# ------------------- regresi: runtime tidak boleh memicu prompt stdin
+
+
+async def test_app_menolak_sesi_belum_terotorisasi_tanpa_prompt(
+    native_fakes: None,
+) -> None:
+    """Sesi ada tapi belum terotorisasi → galat jelas, bukan prompt stdin.
+
+    Regresi nyata (2026-10-11): `TelegentApp.start()` memakai `Client.start()`,
+    yang memanggil `authorize()` → `ainput()`. Di container tanpa TTY hasilnya
+    `EOFError` dan admin melihat "Enter phone number or bot token:".
+    """
+    from telegent.app import SessionNotAuthorized
+
+    _FakeClient.authorized = False
+    app = TelegentApp(_settings(), install_signal_handlers=False)
+
+    with pytest.raises(SessionNotAuthorized):
+        await app.start()
+
+    assert app.is_running is False
+    # Klien tiruan menolak `start()`, jadi Reaching titik ini berarti tidak ada prompt.
+    assert _FakeClient.instances[0].is_connected is False
+
+
+async def test_sesi_terotorisasi_tetap_mulai_normal(native_fakes: None) -> None:
+    """Alur normal tetap utuh: connect → GetState → get_me → initialize."""
+    app = TelegentApp(_settings(), install_signal_handlers=False)
+    await app.start()
+
+    klien = _FakeClient.instances[0]
+    assert klien.is_connected is True and klien.initialized is True
+    assert app.me is not None and app.me.id == 99
+    await app.shutdown()
+
+
+async def test_runtime_menampilkan_needs_login_bukan_error(
+    store, native_fakes: None
+) -> None:
+    """Panel harus mengarahkan admin ke halaman login, bukan menampilkan galat teknis."""
+    from pathlib import Path as _Path
+
+    await store.update(
+        {
+            "telegram_api_id": 1,
+            "telegram_api_hash": "0" * 32,
+            "gemini_api_key": "AIzaSy0123456789012345678901234567890",
+        }
+    )
+    _FakeClient.authorized = False
+    directory = _Path(__file__).parent / "_sesi_palsu"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "userbot_session.session").write_bytes(b"x")
+
+    controller = RuntimeController(store, session_dir=directory)
+    status = await controller.start()
+
+    assert status.state is RuntimeState.NEEDS_LOGIN
+    assert "login" in (status.last_error or "").lower()
+    assert status.running is False

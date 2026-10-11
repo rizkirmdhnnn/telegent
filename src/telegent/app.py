@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from contextlib import asynccontextmanager
-from typing import AsyncIterator, Callable, Optional
+from contextlib import asynccontextmanager, suppress
+from typing import Any, AsyncIterator, Callable, Optional
 
 import ntgcalls
 from google import genai
@@ -36,6 +36,15 @@ from telegent.telegram.signaling import SignalingService, to_ntg_rtc_server, to_
 
 #: Pemantau opsional untuk panel web: (nama_event, payload) -> None.
 EventSink = Callable[[str, dict], None]
+
+
+class SessionNotAuthorized(RuntimeError):
+    """Berkas sesi Telegram ada, tetapi belum terotorisasi.
+
+    Dilempar alih-alih membiarkan Pyrogram meminta nomor telepon di stdin:
+    di panel web tidak ada terminal, dan `Client.start()` akan memanggil
+    `authorize()` yang membaca `stdin` lalu menggantung / `EOFError`.
+    """
 
 
 class TelegentApp:
@@ -181,11 +190,13 @@ class TelegentApp:
         if self._install_signal_handlers_on_start:
             self._install_signal_handlers()
 
-        await self.app.start()
-        self.me = await self.app.get_me()
+        # Replika `Client.start()` tanpa `authorize()`: bila sesi belum
+        # terotorisasi kita berhenti dengan galat yang jelas, bukan prompt.
+        me = await self._start_client()
+        self.me = me
         self._started = True
         self._log.info(
-            "Login sebagai: %s (@%s, id=%s)", self.me.first_name, self.me.username or "-", self.me.id
+            "Login sebagai: %s (@%s, id=%s)", me.first_name, me.username or "-", me.id
         )
         self._log.info(
             "Telegent aktif. Menunggu panggilan (maks %d bersamaan, model=%s).",
@@ -193,6 +204,34 @@ class TelegentApp:
             self.settings.gemini_model,
         )
         self._emit("status", self.status_payload())
+
+    async def _start_client(self) -> Any:
+        """Hubungkan klien Pyrogram; gagal cepat bila sesi belum terotorisasi.
+
+        Mengembalikan objek user Telegram hasil autorisasi yang sudah ada.
+        """
+        client = self.app
+        if client is None:  # pragma: no cover - dijamin oleh start()
+            raise RuntimeError("Klien Telegram belum dibuat.")
+
+        authorized = bool(await client.connect())
+        if not authorized:
+            await client.disconnect()
+            raise SessionNotAuthorized(
+                "Berkas sesi Telegram belum terotorisasi. "
+                "Silakan login lewat halaman Telegram pada panel."
+            )
+
+        try:
+            await client.invoke(functions.updates.GetState())
+            me = await client.get_me()
+            await client.initialize()
+        except BaseException:
+            # `disconnect()` menolak klien yang sudah terputus; abaikan saja.
+            with suppress(Exception):
+                await client.disconnect()
+            raise
+        return me
 
     async def wait_stopped(self) -> None:
         """Tunggu sampai diminta berhenti (SIGINT/SIGTERM atau `stop()`)."""
