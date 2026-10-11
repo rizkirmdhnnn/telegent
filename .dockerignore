@@ -30,3 +30,6 @@ frontend/playwright-report/
 frontend/blob-report/
 frontend/.cache/
 frontend/coverage/
+
+# Artefak pengujian end-to-end (berisi telegent.db + .secret_key)
+.e2e-data/

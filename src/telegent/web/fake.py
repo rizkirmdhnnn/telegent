@@ -8,8 +8,14 @@ Keamanan:
 
 - hanya aktif bila variabel `TELEGENT_FAKE` bernilai **tepat** `1`; nilai lain
   (`true`, `yes`, `0`, kosong, ...) diabaikan dan menghasilkan peringatan;
-- dibaca dari environment proses saja — file `.env` tidak pernah mengaktifkannya,
-  sehingga menyalin variabel ini ke `.env` tidak cukup untuk menyalakan mode fake;
+- dibaca dari environment proses saja sehingga file `.env` yang dibaca panel sendiri
+  tidak dapat mengaktifkannya;
+- **ditolak bila direktori data sudah berisi data nyata** (berkas `*.session`
+  Telegram atau kredensial tersimpan). Penjaga ini penting karena variabel
+  environment bisa disuntikkan dari luar `.env` panel — misalnya lewat
+  `env_file:` pada docker-compose, yang menyalin isi `.env` ke container apa adanya.
+  Tanpa penjaga, sisa `TELEGENT_FAKE=1` dari pengujian bisa diam-diam menyalakan
+  bot tiruan di produksi;
 - selalu memunculkan peringatan mencolok saat aktif.
 
 Yang **tidak** ditirukan: database, penyimpanan kredensial, dan autentikasi
@@ -29,14 +35,16 @@ from typing import Any, Callable, Optional
 from pyrogram.errors import PhoneCodeInvalid
 
 from telegent.app import TelegentApp
+from telegent.web.bootstrap import FAKE_ENV
+from telegent.web.db.base import Database
 from telegent.config import Settings
 from telegent.protocols import CallObserver
 from telegent.telegram.call_session import END_REASON_AI, OUTCOME_ANSWERED
 
 log = logging.getLogger("telegent.web.fake")
 
-#: Nama variabel environment yang mengaktifkan mode fake.
-FAKE_ENV = "TELEGENT_FAKE"
+#: Nama variabel & nilai pengaktif berasal dari `bootstrap` (satu sumber kebenaran).
+#: Diimpor, bukan diduplikasi, agar mengganti nama env tidak menyentuh dua modul.
 
 #: Satu-satunya nilai yang dianggap benar-benar aktif.
 FAKE_TRUTHY = "1"
@@ -67,6 +75,44 @@ def fake_enabled() -> bool:
     mengubah produksi menjadi mode tiruan.
     """
     return os.environ.get(FAKE_ENV, "").strip() == FAKE_TRUTHY
+
+
+#: Kunci setting yang menandakan ada kredensial sungguhan tersimpan.
+_REAL_CREDENTIAL_KEYS = ("telegram_api_id", "gemini_api_key")
+
+
+async def fake_blocked_reason(db: Database, data_dir: Path) -> str | None:
+    """Alasan mode fake ditolak, atau `None` bila aman dipakai.
+
+    Menolak kondisi yang akan membuat bot tiruan menimpa data produksi.
+    """
+    if not fake_enabled():
+        return None
+
+    for path in data_dir.glob("*.session*"):
+        if path.is_file():
+            return f"ditemukan berkas sesi Telegram nyata: {path.name}"
+
+    from sqlalchemy import select
+
+    from telegent.web.db import models
+
+    async with db.session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(models.AppSetting.key, models.AppSetting.value).where(
+                        models.AppSetting.key.in_(_REAL_CREDENTIAL_KEYS)
+                    )
+                )
+            )
+            .all()
+        )
+    for key, value in rows:
+        if str(value).strip().strip('"'):
+            return f"ditemukan kredensial tersimpan pada setting '{key}'"
+
+    return None
 
 
 def warn_if_fake_enabled() -> bool:

@@ -13,7 +13,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.E2E_PORT ?? 8399);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-const DATA_DIR = process.env.E2E_DATA_DIR ?? '.e2e-data';
+// Satu nama untuk satu konsep: direktori data yang sama dipakai server
+// e2e dan container-nya.
+const DATA_DIR = process.env.TELEGENT_DATA_DIR ?? '.e2e-data';
 
 export default defineConfig({
 	testDir: './e2e',

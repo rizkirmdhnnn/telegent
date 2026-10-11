@@ -25,11 +25,11 @@ SPA perlu jaminan tipe & unit test untuk logika non-UI (api client, i18n, store)
 5. Pastikan `npm run build` bersih untuk produksi.
 
 ## Kriteria terima (Definition of Done)
-- [ ] `svelte-check` hijau.
-- [ ] `npm run test` hijau.
-- [ ] `npm run build` sukses.
-- [ ] Uji "kunci i18n hilang" mencegah regresi terjemahan.
-- [ ] Integrasi ke CI (H3).
+- [x] `svelte-check` hijau.
+- [x] `npm run test` hijau.
+- [x] `npm run build` sukses.
+- [x] Uji "kunci i18n hilang" mencegah regresi terjemahan.
+- [x] Integrasi ke CI (H3).
 
 ## Catatan teknis / pertanyaan
 - Fokus logika; hindari tes UI kaku (ditutup e2e H3).

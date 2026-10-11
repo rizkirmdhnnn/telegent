@@ -28,11 +28,11 @@ deterministik (tanpa Telegram/Gemini nyata).
 5. Pastikan tes lama (audio/tools/rate-limit) tetap hijau.
 
 ## Kriteria terima (Definition of Done)
-- [ ] `uv run pytest -q` hijau, termasuk tes web baru.
-- [ ] Cakupan skenario kritis (auth, secret, setting, telegram, monitoring) ada.
-- [ ] Fake runtime/telegram memisahkan tes dari jaringan.
-- [ ] `uv run pyright src/telegent` hijau.
-- [ ] Tes lama tidak berubah perilaku.
+- [x] `uv run pytest -q` hijau, termasuk tes web baru.
+- [x] Cakupan skenario kritis (auth, secret, setting, telegram, monitoring) ada.
+- [x] Fake runtime/telegram memisahkan tes dari jaringan.
+- [x] `uv run pyright src/telegent` hijau.
+- [x] Tes lama tidak berubah perilaku.
 
 ## Catatan teknis / pertanyaan
 - Q17 (fake untuk determinisme).

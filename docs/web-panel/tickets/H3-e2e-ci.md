@@ -28,11 +28,11 @@ yang menjalankan seluruh gerbang kualitas.
 4. CI: matrix/urutan langkah; cache Node & uv; unggah artefak laporan Playwright saat gagal.
 
 ## Kriteria terima (Definition of Done)
-- [ ] Semua skenario e2e lulus di CI tanpa kredensial/jaringan Telegram/Gemini.
-- [ ] `ci.yml` menjalankan pytest, pyright, svelte-check, unit, build, dan e2e.
+- [x] Semua skenario e2e lulus di CI tanpa kredensial/jaringan Telegram/Gemini.
+- [x] `ci.yml` menjalankan pytest, pyright, svelte-check, unit, build, dan e2e.
 - [ ] CI hijau pada PR contoh (dry-run).
-- [ ] Laporan Playwright diunggah saat gagal.
-- [ ] Dokumentasi menjalankan e2e lokal ditambahkan.
+- [x] Laporan Playwright diunggah saat gagal.
+- [x] Dokumentasi menjalankan e2e lokal ditambahkan.
 
 ## Catatan teknis / pertanyaan
 - Q17 (fake untuk determinisme). Pastikan flag fake tidak bisa aktif di produksi secara

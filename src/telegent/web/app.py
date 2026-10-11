@@ -30,6 +30,7 @@ from telegent.web.events import EventBus
 from telegent.web.fake import (
     fake_app_factory,
     fake_client_factory,
+    fake_blocked_reason,
     warn_if_fake_enabled,
 )
 from telegent.web.log_stream import BusLogHandler, LogRingBuffer, SecretRedactor
@@ -99,7 +100,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.log_buffer = log_buffer
     app.state.redactor = redactor
     # Mode fake hanya aktif lewat `TELEGENT_FAKE=1` (lihat `telegent.web.fake`).
-    fake_on = cfg.fake and warn_if_fake_enabled()
+    # Penjaga data nyata: variabel environment bisa disuntikkan dari luar
+    # (mis. `env_file:` pada compose menyalin isi `.env`), jadi `.env` alone
+    # bukan lagi jaminan cukup.
+    fake_on = False
+    if cfg.fake:
+        alasan = await fake_blocked_reason(db, cfg.data_dir)
+        if alasan:
+            log.error(
+                "Mode fake DIABAKAN: %s. Mode tiruan hanya untuk data kosong.",
+                alasan,
+            )
+        else:
+            fake_on = warn_if_fake_enabled()
     app.state.fake = fake_on
     app.state.telegram_login = TelegramLoginService(
         db,

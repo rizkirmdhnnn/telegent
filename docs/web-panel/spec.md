@@ -61,6 +61,15 @@ FastAPI melayani: `/api/*` (JSON/SSE) dan `/` + aset statis (hasil build SPA).
 | `TELEGENT_PORT` | `8080` | Bind port. |
 | `TELEGENT_SESSION_TTL_HOURS` | `168` | Umur cookie sesi admin. |
 | `TELEGENT_AUTOSTART_BOT` | `true` | Jalankan bot saat boot bila akun sudah login. |
+| `TELEGENT_IGNORE_DOTENV` | `false` | `1` mematikan pembacaan `.env` sepenuhnya (container & E2E). |
+| `TELEGENT_FAKE` | *(tidak aktif)* | **Hanya untuk pengujian**: `1` memakai bot & klien Telegram tiruan. Dipakai lewat env proses eksplisit — docker-compose sengaja **tidak** mendeklarasikannya. |
+
+**Gerbang mode tiruan (Fase 5).** `TELEGENT_FAKE` dibaca **sebelum** `load_dotenv()`
+dan hanya bernilai `1` yang aktif. Selain itu ada penjaga data nyata: bila direktori
+data sudah berisi berkas `*.session` Telegram atau kredensial tersimpan, mode fake
+**ditolak** dengan pesan galat. Penjaga ini diperlukan karena variabel environment bisa
+disuntikkan dari luar jalur `.env` panel — terutama `env_file:` pada docker-compose
+yang menyalin isi `.env` ke container apa adanya.
 
 Saat pertama kali, `SettingsStore` melakukan **import `.env` lama** (bila ada) untuk
 field yang belum ada di DB, guna migrasi mulus dari deployment CLI.
@@ -386,7 +395,7 @@ Penanganan error: `phone_invalid`, `code_invalid`, `code_expired`, `password_inv
 | GET | `/events/stream` | `text/event-stream` — status + panggilan + transkrip |
 | GET | `/logs/stream` | `text/event-stream` — log (ring buffer awal + live) |
 | GET | `/audit` | daftar audit (paginasi) |
-| GET | `/healthz` | `{ok, version, db, runtime}` (publik, tanpa detail sensitif) |
+| GET | `/healthz` | `{ok, version, db, fake}` (publik, tanpa detail sensitif; `fake` menandai mode tiruan aktif) |
 
 ---
 

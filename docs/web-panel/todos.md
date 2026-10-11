@@ -79,7 +79,8 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 
 ## Fase 5 — Hardening & rilis
 
-> **Status: selesai** (branch `feat/web-panel-phase-5`). 693 tes pytest hijau,
+> **Status: selesai + review diperbaiki** (branch `feat/web-panel-phase-5`).
+> 702 tes pytest hijau (2 tes compose dilewati bila berkas compose-nya tak ada),
 > pyright & svelte-check bersih, 76 tes Vitest hijau, 15 skenario Playwright
 > hijau. Image Docker tunggal terbangun tanpa Node dan panel disajikan dari `/data`.
 >
@@ -89,11 +90,19 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 >   Alias lama tetap dibaca `Settings` untuk kompatibilitas, tapi compose/
 >   `Dockerfile` hanya menyetel yang baru.
 > - **Mode fake** (`telegent.web.fake`) hanya aktif lewat `TELEGENT_FAKE=1` yang
->   dibaca dari environment proses **sebelum** `load_dotenv`, sehingga `.env`
->   tidak pernah menyalakannya. Peringatan mencolok + terlihat di `/api/healthz`.
+>   dibaca dari environment proses **sebelum** `load_dotenv`, sehingga `.env` yang
+>   dibaca panel sendiri tidak menyalakannya. Peringatan mencolok + terlihat di
+>   `/api/healthz`.
+>   **Penting:** itu belum cukup. `env_file: .env` pada docker-compose menyalin isi
+>   `.env` ke container tanpa melewati `load_dotenv`, jadi `TELEGENT_FAKE=1` yang
+>   tertinggal di `.env` bisa menyalakan bot tiruan di produksi. Karena itu
+>   compose **tidak** mendeklarasikan `TELEGENT_FAKE`, dan ada penjaga data nyata
+>   (`fake.fake_blocked_reason`): bila `*.session` atau kredensial tersimpan sudah
+>   ada, mode fake ditolak dengan pesan galat.
 > - **`TELEGENT_IGNORE_DOTENV=1`** mematikan pembacaan `.env` sepenuhnya
->   (`load_dotenv` *dan* `Settings()`), dipakai container & E2E agar kredensial
->   developer tidak ikut terimpor.
+>   (`load_dotenv` *dan* `Settings()`). Dipakai **E2E saja** (Playwright) agar
+>   kredensial developer tidak ikut terimpor; container produksi justru relies
+>   `.env` sebagai jalur migrasi dari deployment CLI.
 > - **Tiga bug produksi ditemukan oleh tes Fase 5** dan diperbaiki:
 >   `t(key, '')` membocorkan kunci mentah ke UI; `ThemeStore` melempar di
 >   lingkungan tanpa `matchMedia`; dan `$state(new Set())` yang **tidak reaktif**

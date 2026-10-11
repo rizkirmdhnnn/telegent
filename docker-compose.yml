@@ -15,9 +15,12 @@ services:
       TELEGENT_HOST: 0.0.0.0
       TELEGENT_PORT: "8080"
       TELEGENT_AUTOSTART_BOT: "true"
-      # Mode tiruan untuk pengujian. Kosong = normal. Jangan diisi `1` di
-      # produksi: bot & klien Telegram akan jadi tiruan (lihat docs).
-      TELEGENT_FAKE: ${TELEGENT_FAKE:-}
+      # CATATAN: `TELEGENT_FAKE` sengaja TIDAK ada di sini.
+      # Mode tiruan hanya lewat env proses eksplisit, misalnya:
+      #   docker compose run -e TELEGENT_FAKE=1 telegent
+      # Kalau variabel ini diekspos lewat compose (atau `env_file`), maka
+      # `TELEGENT_FAKE=1` yang tertinggal di `.env` akan diam-diam menyalakan bot
+      # tiruan di produksi — persis yang dijanjikan tidak mungkin terjadi.
     ports:
       # Hanya host lokal yang bisa mengakses (Q16). Akses dari jaringan lain
       # lewat VPN/tunnel — lihat docs/web-panel/deployment.md.

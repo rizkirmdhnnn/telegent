@@ -18,7 +18,10 @@ DEFAULT_PORT = 8080
 DEFAULT_SESSION_TTL_HOURS = 168
 DEFAULT_DB_FILENAME = "telegent.db"
 
-#: Nama env yang mengaktifkan mode fake (lihat `telegent.web.fake`).
+#: Nama env yang mengaktifkan mode fake.
+#:
+#: Satu-satunya tempat deklarasinya: `telegent.web.fake` mengimpor nilai ini,
+#: bukan menyalinnya, sehingga mengganti nama env tidak menyentuh dua modul.
 FAKE_ENV = "TELEGENT_FAKE"
 
 #: Nama env untuk **menolak** pembacaan `.env`.
@@ -99,7 +102,7 @@ def dotenv_enabled() -> bool:
     Satu sumber kebenaran untuk keputusan ini: dipakai oleh `load_bootstrap`
     (untuk `load_dotenv`) **dan** `SettingsStore.import_env_once` (yang memakai
     `Settings`, membaca `.env` lewat pydantic-settings). Kalau keduanya punya
-    logikanya sendiri, import bisa berjalanlogika sendiri, import bisa berjalan setengah jalan pada mode fake/container.
+    logikanya sendiri, import bisa berjalan setengah jalan pada mode fake/container.
     """
     return not _env_bool(IGNORE_DOTENV_ENV, False)
 
@@ -119,14 +122,21 @@ def load_bootstrap(
         else Path(os.getenv("TELEGENT_DATA_DIR", DEFAULT_DATA_DIR)).expanduser()
     ).resolve()
 
-    # Mode fake dibaca SEBELUM `load_dotenv` danlangsung dari environment proses:
+    # Mode fake dibaca SEBELUM `load_dotenv`, langsung dari environment proses:
     # file `.env` tidak boleh pernah mengaktifkan mode tiruan.
     fake = os.environ.get(FAKE_ENV, "").strip() == "1"
 
     # `.env` hanya sebagai fallback; variabel environment asli selalu menang.
     # `TELEGENT_IGNORE_DOTENV=1` mematikan prosesnya sepenuhnya (container & E2E).
+    #
+    # Path-nya eksplisit `./.env`: `load_dotenv()` tanpa argumen menelusuri ke atas
+    # mulai dari BERKAS pemanggil (yaitu site-packages), bukan direktori kerja —
+    # perilaku tak terduga yang membuat `.env` di root proyek sering tak terbaca.
+    # Konvensi CWD ini sama dengan pydantic-settings (`Settings`) dan Docker.
     if dotenv_enabled():
-        load_dotenv(override=False)
+        dotenv_path = Path(".env")
+        if dotenv_path.is_file():
+            load_dotenv(dotenv_path, override=False)
 
     resolved_db_url = db_url or os.getenv("TELEGENT_DB_URL") or ""
     if not resolved_db_url:

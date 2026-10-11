@@ -32,12 +32,12 @@ container (build SPA + runtime Python + volume `data/`) dan penyesuaian entry CL
    peringatan tanpa TLS, migrasi dari deployment `.env` lama.
 
 ## Kriteria terima (Definition of Done)
-- [ ] `docker compose up` → panel tersedia di host:port; bot mulai bila akun siap.
-- [ ] `telegent --no-web` berperilaku seperti deployment lama (headless).
-- [ ] Volume `data/` mempertahankan DB, secret key, dan sesi antar restart.
-- [ ] Build menghasilkan image tunggal tanpa langkah manual Node di host.
-- [ ] Dokumentasi deploy & keamanan lengkap dan akurat.
-- [ ] `uv run pytest -q` & `pyright` hijau (paket tetap konsisten).
+- [x] `docker compose up` → panel tersedia di host:port; bot mulai bila akun siap.
+- [x] `telegent --no-web` berperilaku seperti deployment lama (headless).
+- [x] Volume `data/` mempertahankan DB, secret key, dan sesi antar restart.
+- [x] Build menghasilkan image tunggal tanpa langkah manual Node di host.
+- [x] Dokumentasi deploy & keamanan lengkap dan akurat.
+- [x] `uv run pytest -q` & `pyright` hijau (paket tetap konsisten).
 
 ## Catatan teknis / pertanyaan
 - Q16 (bind default 127.0.0.1), Q18 (nama produk "Telegent"), Q19 (tanpa telemetri).
