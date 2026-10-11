@@ -72,6 +72,7 @@ def _seed_children(
     *,
     transcripts: list[tuple[str, str]] = (),
     tools: list[dict[str, Any]] = (),
+    at: datetime | None = None,
 ) -> None:
     """Sisipkan transkrip & tool call untuk satu `call_record`."""
 
@@ -82,7 +83,7 @@ def _seed_children(
                 for speaker, text in transcripts:
                     session.add(
                         models.TranscriptEntry(
-                            call_record_id=record_id, speaker=speaker, text=text
+                            call_record_id=record_id, speaker=speaker, text=text, at=at
                         )
                     )
                 for spec in tools:
@@ -94,6 +95,7 @@ def _seed_children(
                             result_json=spec.get("result_json"),
                             status=spec.get("status", "ok"),
                             duration_ms=spec.get("duration_ms", 10),
+                            at=at,
                         )
                     )
         finally:
@@ -366,6 +368,43 @@ def test_calls_detail_menandai_panggilan_aktif(
 
     body = admin_client.get(f"/api/calls/{ids[0]}").json()
     assert body["active"] is True
+
+
+def test_waktu_panggilan_selalu_utc_dengan_suffix_z(
+    admin_client: TestClient, db_url_of: str
+) -> None:
+    """Kolom disimpan sebagai naive UTC; API harus menandainya eksplisit.
+
+    Tanpa akhiran `Z`, `new Date()` di browser memperlakukannya sebagai waktu
+    lokal sehingga daftar panggilan terlihat bergeser satu jam.
+    """
+    record_id = _seed(db_url_of, [{"tg_call_id": 1, "ended_at": datetime(2026, 1, 1, 10, 1)}])[0]
+    _seed_children(
+        db_url_of,
+        record_id,
+        transcripts=[("caller", "halo")],
+        tools=[{"name": "end_call"}],
+        at=datetime(2026, 1, 1, 10, 0, 30),
+    )
+
+    items = admin_client.get("/api/calls").json()["items"]
+    list_body = next(item for item in items if item["id"] == record_id)
+    detail = admin_client.get(f"/api/calls/{record_id}").json()
+    transcript = admin_client.get(f"/api/calls/{record_id}/transcript").json()["items"][0]
+    tools = admin_client.get(f"/api/calls/{record_id}/tools").json()["items"][0]
+
+    for value in (
+        list_body["started_at"],
+        list_body["ended_at"],
+        detail["started_at"],
+        detail["ended_at"],
+        transcript["at"],
+        tools["at"],
+    ):
+        assert value is not None, "waktu tidak boleh null pada data contoh"
+        assert value.endswith("Z"), f"waktu harus berakhiran Z, dapat: {value}"
+        # Naive UTC harus dibaca apa adanya sebagai UTC (jam 10 tetap 10).
+        assert datetime.fromisoformat(value.replace("Z", "+00:00")).hour == 10
 
 
 def test_calls_detail_tidak_ada_menghasilkan_404(admin_client: TestClient) -> None:

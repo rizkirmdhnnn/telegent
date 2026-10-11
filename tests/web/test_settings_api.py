@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi.testclient import TestClient
 from web_helpers import csrf_of, do_setup
 
@@ -95,3 +97,62 @@ def test_put_settings_hot_and_restart(live_client: TestClient) -> None:
     get_data = get_resp.json()
     assert get_data["pending_restart"] is True
     assert "telegram_session_name" in get_data["pending_restart_keys"]
+
+
+def test_log_level_langsung_berlaku_ke_logger_root(live_client: TestClient) -> None:
+    """`log_level` mengatur logger root, bukan hanya bot.
+
+    Tanpa ini, log INFO tidak pernah sampai ke `/logs/stream` karena logger root
+    default Python adalah WARNING.
+    """
+    do_setup(live_client)
+    root = logging.getLogger()
+    sebelumnya = root.level
+    try:
+        resp = live_client.put(
+            "/api/settings",
+            json={"changes": {"log_level": "DEBUG"}},
+            headers={"X-CSRF-Token": csrf_of(live_client)},
+        )
+        assert resp.status_code == 200
+        assert root.level == logging.DEBUG
+
+        live_client.put(
+            "/api/settings",
+            json={"changes": {"log_level": "ERROR"}},
+            headers={"X-CSRF-Token": csrf_of(live_client)},
+        )
+        assert root.level == logging.ERROR
+    finally:
+        root.setLevel(sebelumnya)
+
+
+def test_setting_lain_tidak_menyalakan_level_log(live_client: TestClient) -> None:
+    do_setup(live_client)
+    root = logging.getLogger()
+    sebelumnya = root.level
+    try:
+        live_client.put(
+            "/api/settings",
+            json={"changes": {"max_concurrent_calls": 3}},
+            headers={"X-CSRF-Token": csrf_of(live_client)},
+        )
+        assert root.level == sebelumnya
+    finally:
+        root.setLevel(sebelumnya)
+
+
+def test_bus_log_menerima_level_info_setelah_boot(live_client: TestClient) -> None:
+    """Setelah boot, log INFO harus benar-benar sampai ke ring buffer SSE."""
+    do_setup(live_client)
+    client: TestClient = live_client
+
+    def publish() -> None:
+        logging.getLogger("telegent.web.test").info("halo dari level info")
+
+    # `set_root_level` dijalankan di lifespan; panggil publisher lewat portal
+    # agar berjalan di event loop aplikasi.
+    client.portal.call(publish)  # type: ignore[union-attr]
+
+    entries = client.app.state.log_buffer.recent(limit=5)  # type: ignore[attr-defined]
+    assert any(item["message"] == "halo dari level info" for item in entries)

@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from telegent.logging_setup import set_root_level
 from telegent.web.deps import AdminDep, CsrfDep, RuntimeDep, StoreDep
 from telegent.web.schemas.settings import (
     SettingsListResponse,
@@ -58,6 +59,10 @@ async def update_settings(
         actor=admin.username,
         ip=client_ip,
     )
+    if "log_level" in payload.changes:
+        # Level log berlaku untuk seluruh proses, bukan hanya bot; terapkan
+        # seketika agar aliran `/logs/stream` ikut berubah.
+        set_root_level(await store.get("log_level"))
     if result.applied or result.needs_restart:
         await runtime.refresh_settings()
 

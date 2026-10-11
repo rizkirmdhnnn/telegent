@@ -19,6 +19,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from telegent import __version__
 from telegent.app import EventSink
+from telegent.logging_setup import set_root_level
 from telegent.web.bootstrap import BootstrapConfig, load_bootstrap
 from telegent.web.call_recorder import build_recorder
 from telegent.web.crypto import SecretCipher
@@ -84,6 +85,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log_handler = BusLogHandler(bus, log_buffer, redactor)
     root_logger = logging.getLogger()
     root_logger.addHandler(log_handler)
+    # Level log dari setting panel (bukan default Python WARNING), supaya log
+    # INFO benar-benar mengalir ke `/logs/stream`.
+    set_root_level(await store.get("log_level"))
 
     app.state.events = bus
     app.state.log_buffer = log_buffer

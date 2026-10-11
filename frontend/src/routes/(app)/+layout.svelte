@@ -24,16 +24,15 @@
 		runtime.disconnect();
 	});
 
-	// Halaman Fase berikutnya (Panggilan, Log, Audit) belum ada;
-	// tetap ditampilkan agar arsitektur informasi B3 utuh, dengan penanda "Segera".
+	// Halaman Panggilan & Log sudah ada (Fase 3); Audit masih menyusul (tiket G/H).
 	const navItems = [
 		{ href: '/', label: 'nav.dashboard', icon: 'dashboard', soon: false },
-		{ href: '/calls', label: 'nav.calls', icon: 'phone', soon: true },
+		{ href: '/calls', label: 'nav.calls', icon: 'phone', soon: false },
 		{ href: '/settings', label: 'nav.settings', icon: 'settings', soon: false },
 		{ href: '/credentials', label: 'nav.credentials', icon: 'key', soon: false },
 		{ href: '/telegram', label: 'nav.telegram', icon: 'send', soon: false },
 		{ href: '/tools', label: 'nav.tools', icon: 'wrench', soon: false },
-		{ href: '/logs', label: 'nav.logs', icon: 'terminal', soon: true },
+		{ href: '/logs', label: 'nav.logs', icon: 'terminal', soon: false },
 		{ href: '/audit', label: 'nav.audit', icon: 'shield', soon: true },
 		{ href: '/account', label: 'nav.account', icon: 'user', soon: false }
 	];
@@ -99,6 +98,19 @@
 						<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 							<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
 							<circle cx="12" cy="7" r="4"></circle>
+						</svg>
+					{:else if item.icon === 'phone'}
+						<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>
+						</svg>
+					{:else if item.icon === 'terminal'}
+						<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<polyline points="4 17 10 11 4 5"></polyline>
+							<line x1="12" y1="19" x2="20" y2="19"></line>
+						</svg>
+					{:else if item.icon === 'shield'}
+						<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
 						</svg>
 					{:else}
 						<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

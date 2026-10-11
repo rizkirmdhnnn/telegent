@@ -2,10 +2,34 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+
+def utc_iso(value: datetime | None) -> str | None:
+    """Timestamp UTC dengan akhiran `Z`, sama seperti endpoint lain.
+
+    Kolom disimpan sebagai naive UTC (lihat `db.base.utcnow`), sehingga naive
+    bawaan perlu ditandai eksplisit. Tanpa ini, `new Date()` di browser
+    memperlakukannya sebagai waktu lokal dan salah satu jam.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+class UtcDatetimeModel(BaseModel):
+    """Model dasar dengan serializer waktu UTC."""
+
+    @field_serializer(
+        "started_at", "ended_at", "at", when_used="json", check_fields=False
+    )
+    def _serialize_datetime(self, value: datetime | None) -> str | None:
+        return utc_iso(value)
 
 
 class ActiveCall(BaseModel):
@@ -28,7 +52,7 @@ class ActiveCallListResponse(BaseModel):
     count: int = 0
 
 
-class CallSummary(BaseModel):
+class CallSummary(UtcDatetimeModel):
     """Satu baris riwayat panggilan."""
 
     id: int
@@ -62,7 +86,7 @@ class CallDetail(CallSummary):
     )
 
 
-class TranscriptItem(BaseModel):
+class TranscriptItem(UtcDatetimeModel):
     """Satu baris transkrip."""
 
     id: int
@@ -78,7 +102,7 @@ class TranscriptListResponse(BaseModel):
     total: int = 0
 
 
-class ToolCallItem(BaseModel):
+class ToolCallItem(UtcDatetimeModel):
     """Satu pemanggilan tool beserta argumen, hasil, dan durasinya."""
 
     id: int
