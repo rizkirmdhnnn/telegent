@@ -1,6 +1,7 @@
 export type Locale = 'id' | 'en';
 
-class LocaleStore {
+/** Diekspor agar setiap tes memakai instance sendiri (state rune tidak global). */
+export class LocaleStore {
 	current = $state<Locale>('id');
 
 	constructor() {

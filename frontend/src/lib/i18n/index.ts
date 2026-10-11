@@ -30,6 +30,12 @@ function raw(key: string, fallback?: string): string {
 	const currentLocale: Locale = locale.current === 'en' ? 'en' : 'id';
 	const catalog = catalogs[currentLocale] || catalogs.id;
 
+	// Fallback yang diberikan eksplisit (termasuk string kosong) harus dihormati.
+	// `fallback || key` akan mengembalikan kunci mentah saat fallback kosong, dan
+	// itu bocor ke UI: `apiErrorMessage` menulis `errors.kode_asing` ke layar
+	// alih-alih pesan server.
+	const miss = (): string => (fallback === undefined ? key : fallback);
+
 	const parts = key.split('.');
 	let cursor: any = catalog;
 
@@ -37,18 +43,19 @@ function raw(key: string, fallback?: string): string {
 		if (cursor && typeof cursor === 'object' && part in cursor) {
 			cursor = cursor[part];
 		} else {
-			// Fallback ke catalog id jika di en tidak ada
+			// Kunci tidak ada di locale aktif; coba katalog `id` sebagai cadangan.
 			let fallbackCursor: any = catalogs.id;
 			for (const p of parts) {
 				if (fallbackCursor && typeof fallbackCursor === 'object' && p in fallbackCursor) {
 					fallbackCursor = fallbackCursor[p];
 				} else {
-					return fallback || key;
+					return miss();
 				}
 			}
-			return typeof fallbackCursor === 'string' ? fallbackCursor : fallback || key;
+			return typeof fallbackCursor === 'string' ? fallbackCursor : miss();
 		}
 	}
 
-	return typeof cursor === 'string' ? cursor : fallback || key;
+	// Kunci ada tapi bukan string (mis. objek) — diperlakukan sebagai tidak ditemukan.
+	return typeof cursor === 'string' ? cursor : miss();
 }

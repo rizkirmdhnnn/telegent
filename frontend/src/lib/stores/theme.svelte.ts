@@ -6,7 +6,22 @@ function isTheme(value: unknown): value is Theme {
 	return value === 'light' || value === 'dark' || value === 'system';
 }
 
-class ThemeStore {
+/**
+ * `matchMedia` tidak selalu ada (jsdom, beberapa browser lawas, lingkungan
+ * server). Semua pemanggilan harus lewat sini — memanggil langsung akan
+ * membuat konstruktor store melempar dan seluruh panel gagal memuat.
+ */
+function prefersDark(): boolean {
+	if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+	try {
+		return window.matchMedia('(prefers-color-scheme: dark)').matches;
+	} catch {
+		return false;
+	}
+}
+
+/** Diekspor agar setiap tes memakai instance sendiri (state rune tidak global). */
+export class ThemeStore {
 	current = $state<Theme>('system');
 
 	constructor() {
@@ -24,7 +39,7 @@ class ThemeStore {
 	get resolved(): 'light' | 'dark' {
 		if (typeof window === 'undefined') return 'light';
 		if (this.current === 'system') {
-			return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+			return prefersDark() ? 'dark' : 'light';
 		}
 		return this.current;
 	}

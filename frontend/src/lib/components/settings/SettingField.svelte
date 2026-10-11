@@ -70,9 +70,10 @@
 				<code class="text-[10px] text-slate-400 font-mono">({spec.key})</code>
 			</div>
 			{#if spec.description}
-				<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-					{t(`labels.${spec.key}.help`, '')}
-				</p>
+				{@const help = t(`labels.${spec.key}.help`, '')}
+				{#if help}
+					<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{help}</p>
+				{/if}
 			{/if}
 		</div>
 
