@@ -127,11 +127,14 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 - [x] README + dokumentasi deployment diperbarui
 - [x] Smoke test container bersih → panel boot, DB + `.secret_key` terbentuk
 - [ ] Smoke test panggilan nyata (butuh kredensial Telegram/Gemini asli).
-      **Sudah berjalan di container** (2026-10-11) dan membongkar **dua** bug
-      nyata yang sama-sama berasal dari `Client.start()`:
-      1. jalur **login** panel (`telegram_login._open_client`),
-      2. jalur **runtime bot** (`app.TelegentApp._start_client`) — berkas sesi
-         ada tapi belum terotorisasi, sehingga admin melihat prompt stdin dan
-         `EOFError`.
-      Keduanya sudah diganti ke `connect()` dan diverifikasi ulang di container.
+      **Sudah berjalan di container** (2026-10-11) dan membongkar **tiga** bug
+      nyata yang tidak pernah tertangkap tes:
+      1. jalur **login** panel memicu prompt stdin (`Client.start()`),
+      2. jalur **runtime bot** memicu prompt stdin untuk sesi yang ada tapi belum
+         terotorisasi,
+      3. `sign_in` dipanggil dengan argumen **terbalik** — kode OTP masuk ke slot
+         `phone_code_hash`. Akibatnya Python melempar `TypeError` secara lokal,
+         jadi kode yang benar pun **tidak pernah dikirim** ke Telegram; errornya
+         dipetakan menjadi `telegram_error`.
+      Ketiganya sudah diperbaiki dan diverifikasi ulang di container.
       Sisa: konfirmasi satu panggilan suara sungguhan dari nomor Telegram.

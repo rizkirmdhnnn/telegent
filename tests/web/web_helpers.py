@@ -130,9 +130,15 @@ class FakeTelegramClient:
         return SimpleNamespace(phone_code_hash=FakeTelegram.phone_code_hash)
 
     async def sign_in(
-        self, phone: str, code: str, *, phone_code_hash: str | None = None
+        self, phone_number: str, phone_code_hash: str, phone_code: str
     ) -> Any:
-        self.signed_in_with = (phone, code, phone_code_hash)
+        """Tanda tangan meniru Pyrogram persis: (phone, hash, code).
+
+        Sengaja TIDAK memakai keyword-only atau urutan lain. Kesalahan nyata
+        (2026-10-11): kode OTP dikirim pada slot `phone_code_hash`, sehingga
+        fake versi lama ikut Strengthening bug itu.
+        """
+        self.signed_in_with = (phone_number, phone_code_hash, phone_code)
         if FakeTelegram.sign_in_error is not None:
             raise FakeTelegram.sign_in_error
         return FakeTelegram.me

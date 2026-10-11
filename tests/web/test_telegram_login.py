@@ -483,10 +483,11 @@ async def test_flow_dipakai_lagi_setelah_restart_proses(
     result = await second.verify(start.flow_id, _CODE)
 
     assert result.next == "done"
+    # Urutan Pyrogram: (phone_number, phone_code_hash, phone_code).
     assert FakeTelegram.instances[-1].signed_in_with == (
         _PHONE,
-        _CODE,
         SECRET_CODE_HASH,
+        _CODE,
     )
 
 
@@ -683,3 +684,90 @@ def test_pabrik_klien_login_tidak_menetapkan_nomor_telepon() -> None:
     assert dibuat.get("phone_number") in (None, ""), (
         "menyetel phone_number membuat start() ikut interactive login"
     )
+
+
+# ------------------------- regresi: urutan argumen sign_in (tidak boleh tertukar)
+
+
+async def test_sign_in_mengirim_hash_dan_kode_ke_slot_yang_benar(
+    service: TelegramLoginService,
+) -> None:
+    """Pyrogram: `sign_in(phone_number, phone_code_hash, phone_code)`.
+
+    Regresi nyata (2026-10-11): kode OTP dikirim pada slot `phone_code_hash`
+    dan hash dikirim pada slot `phone_code`. Telegram menolak dengan BadRequest
+    yang dipetakan menjadi `telegram_error` — kode yang benar tetap ditolak.
+    """
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    phone, code_hash, code = FakeTelegram.instances[-1].signed_in_with
+    assert phone == _PHONE
+    assert code_hash == SECRET_CODE_HASH, "hash harus di slot kedua"
+    assert code == _CODE, "kode OTP harus di slot ketiga"
+
+
+async def test_kode_ditukar_tidak_lagi_terjadi(service: TelegramLoginService) -> None:
+    """PGuardia tambahan: nilai yang sama tidak boleh tertukar diam-diam."""
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    _, code_hash, code = FakeTelegram.instances[-1].signed_in_with
+    assert code_hash != code
+
+
+# ----------------------------- regresi: galat tak terpetakan harus terlihat di log
+
+
+async def test_galat_tak_terpetakan_mencatat_jenis_aslinya(
+    service: TelegramLoginService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`telegram_error` sendirinya tidak informatif — log harus menyebut penyebabnya.
+
+    Tanpa ini, operator hanya melihat "Telegram menolak permintaan ini" dan tidak
+    pernah tahu galat sebenarnya (terbukti saat smoke test 2026-10-11).
+    """
+    import logging
+
+    FakeTelegram.sign_in_error = ValueError("PHONE_CODE_HASH_INVALID")
+    with caplog.at_level(logging.WARNING, logger="telegent.web.telegram"):
+        start = await service.start(_PHONE)
+        with pytest.raises(TelegramLoginError):
+            await service.verify(start.flow_id, _CODE)
+
+    pesan = "\n".join(record.getMessage() for record in caplog.records)
+    assert "telegram_error" in pesan
+    assert "ValueError" in pesan, "jenis exception asli harus muncul di log"
+    assert "PHONE_CODE_HASH_INVALID" in pesan, "pesan asli harus muncul di log"
+
+
+async def test_pesan_galat_terredaksi(
+    database: Database, store: SettingsStore, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Nilai sensitif tidak boleh bocor ke log meski ada di pesan exception."""
+    import logging
+
+    from telegent.web.log_stream import SecretRedactor
+
+    rahasia = "AIzaSyRahasiaYangPanjangSekali1234567890"
+    redactor = SecretRedactor([rahasia])
+    service = TelegramLoginService(
+        database,
+        store,
+        data_dir=tmp_path / "data",
+        redactor=redactor,
+        client_factory=FakeTelegram.factory,
+    )
+    await store.update(
+        {"telegram_api_id": _API_ID, "telegram_api_hash": _API_HASH}
+    )
+
+    FakeTelegram.sign_in_error = RuntimeError(f"gagal dengan {rahasia}")
+    with caplog.at_level(logging.WARNING, logger="telegent.web.telegram"):
+        start = await service.start(_PHONE)
+        with pytest.raises(TelegramLoginError):
+            await service.verify(start.flow_id, _CODE)
+
+    pesan = "\n".join(record.getMessage() for record in caplog.records)
+    assert "RuntimeError" in pesan, "jenis exception tetap harus terlihat"
+    assert rahasia not in pesan, "nilai sensitif bocor ke log"

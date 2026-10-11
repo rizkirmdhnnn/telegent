@@ -240,10 +240,13 @@ class TelegramLoginService:
             self._remember_secret(normalized)
             client = await self._client_for_flow(flow)
             try:
+                # Urutan argumen Pyrogram: phone_number, phone_code_hash,
+                # phone_code. Tertukar hanya sampai sini: kode OTP dikirim
+                # sebagai hash dan hash dikirim sebagai kode.
                 await client.sign_in(
                     flow.phone,
+                    flow.phone_code_hash,
                     normalized,
-                    phone_code_hash=flow.phone_code_hash,
                 )
             except SessionPasswordNeeded:
                 await self._store.set_flow_status(flow_id, FLOW_AWAITING_PASSWORD)
@@ -548,9 +551,28 @@ class TelegramLoginService:
             await self._store.update_account(status=ACCOUNT_ERROR, last_error=error.code)
         else:
             await self._store.set_last_error(error.code)
-        # Hanya kode stabil yang dicatat; pesan mentah bisa memuat detail sensitif.
-        log.warning("Login Telegram gagal: %s", error.code)
+
+        # Ke API hanya kode stabil. Ke LOG operator perlu tahu jenis galatnya:
+        # tanpa ini, galat yang belum dipetakan muncul sebagai `telegram_error`
+        # tanpa petunjuk sama sekali (terbukti saat smoke test 2026-10-11).
+        if isinstance(exc, TelegramLoginError):
+            log.warning("Login Telegram gagal: %s", error.code)
+        elif error.code == "telegram_error":
+            detail = self._redact(str(exc))[:300]
+            log.warning(
+                "Login Telegram gagal: telegram_error (tidak dipetakan) — %s: %s",
+                type(exc).__name__,
+                detail or "(tanpa pesan)",
+            )
+        else:
+            log.warning(
+                "Login Telegram gagal: %s (%s)", error.code, type(exc).__name__
+            )
         return error
+
+    def _redact(self, text: str) -> str:
+        """Redaksi nilai sensitif pada pesan galat sebelum masuk log."""
+        return self._redactor.redact(text) if self._redactor else text
 
     def _remember_secret(self, value: str | None) -> None:
         """Daftarkan nilai sensitif ke redactor (pengaman kedua terhadap log)."""
