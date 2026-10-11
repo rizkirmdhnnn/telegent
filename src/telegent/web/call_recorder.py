@@ -24,6 +24,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from telegent.ai.tools.spec import TOOL_STATUS_OK
 from telegent.web import call_store
 from telegent.web.db.base import Database, utcnow
 from telegent.web.events import EventBus
@@ -147,17 +148,25 @@ class CallRecorder:
         self._enqueue(lambda: self._create_record(state, user_display))
 
     def call_started(self, tg_call_id: int, user_id: int) -> None:
-        """Panggilan benar-benar aktif (media siap)."""
+        """Panggilan benar-benar aktif (media siap).
+
+        `started_at` digeser ke waktu ini supaya `ended_at - started_at` sama
+        dengan `duration_sec` yang diukur runtime (catatan Q12 di §5.5).
+        """
         state = self._state(tg_call_id, user_id)
+        started_at = utcnow()
         self._publish(
             EVENT_CALL_STARTED,
             {
                 "tg_call_id": tg_call_id,
                 "user_id": user_id,
                 "record_id": state.record_id,
-                "started_at": utcnow().isoformat() + "Z",
+                "started_at": started_at.isoformat() + "Z",
             },
         )
+        # Antrean FIFO: `_create_record` dijamin selesai lebih dulu, sehingga
+        # `state.record_id` sudah terisi saat pekerjaan ini dijalankan.
+        self._enqueue(lambda: self._mark_started(state, started_at))
 
     def call_ended(
         self,
@@ -219,6 +228,7 @@ class CallRecorder:
             EVENT_TRANSCRIPT,
             {
                 "tg_call_id": tg_call_id,
+                "record_id": state.record_id if state is not None else None,
                 "speaker": speaker,
                 "text": text,
                 "at": utcnow().isoformat() + "Z",
@@ -232,12 +242,14 @@ class CallRecorder:
             return
         args_json = call_store.dumps_json(self._redact_deep(data.get("args")))
         result_json = call_store.dumps_json(self._redact_deep(data.get("result")))
-        status = str(data.get("status") or "ok")
+        status = str(data.get("status") or TOOL_STATUS_OK)
         duration_ms = int(data.get("duration_ms") or 0)
+        state = self._states.get(tg_call_id)
         self._publish(
             EVENT_TOOL_CALL,
             {
                 "tg_call_id": tg_call_id,
+                "record_id": state.record_id if state is not None else None,
                 "name": name,
                 "status": status,
                 "duration_ms": duration_ms,
@@ -245,7 +257,7 @@ class CallRecorder:
         )
         self._enqueue(
             lambda: self._write_tool_call(
-                self._states.get(tg_call_id), name, args_json, result_json, status, duration_ms
+                state, name, args_json, result_json, status, duration_ms
             )
         )
 
@@ -295,17 +307,6 @@ class CallRecorder:
             if stop:
                 return
 
-    def _drain(self) -> None:
-        """Kosongkan sisa antrean tanpa menulis (dipakai saat shutting down)."""
-        while True:
-            try:
-                job = self._queue.get_nowait()
-            except asyncio.QueueEmpty:
-                return
-            self._queue.task_done()
-            if job is None:
-                return
-
     # ------------------------------------------------------------------ writers
 
     async def _create_record(self, state: _CallState, user_display: str | None) -> None:
@@ -315,6 +316,11 @@ class CallRecorder:
             user_id=state.user_id,
             user_display=user_display,
         )
+
+    async def _mark_started(self, state: _CallState, started_at: Any) -> None:
+        if state.record_id is None:
+            return
+        await call_store.mark_call_started(self._db, state.record_id, started_at=started_at)
 
     async def _finish_record(
         self,

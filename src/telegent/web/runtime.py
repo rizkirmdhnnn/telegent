@@ -78,6 +78,7 @@ class RuntimeController:
         call_observer: CallObserver | None = None,
     ) -> None:
         self._store = store
+        self._event_sink = event_sink
         self._tool_config_provider = tool_config_provider
         self._tool_configs: dict[str, dict[str, Any]] = {}
         self._app_factory: AppFactory = app_factory or (
@@ -137,20 +138,22 @@ class RuntimeController:
             None,
         )
 
-    def find_session_by_record_id(
-        self, record_id: int, lookup: Callable[[int], int | None]
-    ) -> CallSession | None:
-        """Sesi aktif untuk satu `call_record` id.
-
-        `lookup` memetakan id record → `tg_call_id`; di-inject agar controller
-        tidak perlu tahu-menahu soal database.
-        """
-        tg_call_id = lookup(record_id)
-        if tg_call_id is None:
-            return None
-        return self.find_session_by_call_id(tg_call_id)
-
     # ------------------------------------------------------------------ status
+
+    def publish(self, event: str, payload: dict[str, Any]) -> None:
+        """Terbitkan event ke panel (mis. `runtime.error`).
+
+        Kegagalan tidak pernah dilempar: pemantau tidak boleh menjatuhkan bot.
+        """
+        if self._event_sink is None:
+            return
+        try:
+            self._event_sink(event, payload)
+        except Exception:  # noqa: BLE001 - pemantau tidak boleh mengganggu bot
+            log.debug("Gagal menerbitkan event '%s'.", event, exc_info=True)
+
+    def _publish_status(self) -> None:
+        self.publish("status", self.status().to_dict())
 
     def status(self) -> RuntimeStatus:
         """Status saat ini (aman dipanggil kapan saja)."""
@@ -205,6 +208,7 @@ class RuntimeController:
                 self._state = RuntimeState.ERROR
                 self._last_error = self._safe_error(exc)
                 log.exception("Gagal menjalankan bot.")
+                self.publish("runtime.error", {"message": self._last_error})
                 return self.status()
 
             self._app = app
@@ -214,6 +218,7 @@ class RuntimeController:
             self._task = asyncio.create_task(self._supervise(app), name="telegent-runtime")
             self._pending_restart = await self._store.restart_keys_pending(settings)
             log.info("Runtime berjalan (model=%s).", settings.gemini_model)
+            self._publish_status()
             return self.status()
 
     async def _supervise(self, app: TelegentApp) -> None:
@@ -229,6 +234,7 @@ class RuntimeController:
                 self._task = None
                 self._state = RuntimeState.STOPPED
                 self._since = None
+                self._publish_status()
 
     async def stop(self) -> RuntimeStatus:
         """Hentikan bot (menunggu sesi ditutup)."""
@@ -257,6 +263,7 @@ class RuntimeController:
                     self._task = None
                     self._state = RuntimeState.STOPPED
                     self._since = None
+            self._publish_status()
             return self.status()
 
     async def restart(self) -> RuntimeStatus:
@@ -295,6 +302,7 @@ class RuntimeController:
             self._app.set_settings(effective)
             self._settings = effective
             log.info("Konfigurasi hot diterapkan ke runtime.")
+        self._publish_status()
         return self.status()
 
     def _effective_settings(self, stored: Settings) -> Settings:

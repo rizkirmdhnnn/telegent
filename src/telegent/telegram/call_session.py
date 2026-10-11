@@ -58,6 +58,18 @@ END_REASON_MAX_DURATION = "max_duration"
 END_REASON_IDLE = "idle"
 END_REASON_PANEL = "panel_hangup"
 END_REASON_CALLER = "caller_hangup"
+END_REASON_REJECTED = "rejected"
+END_REASON_ERROR = "error"
+
+#: Hasil panggilan (spesifikasi §5.5 `outcome`). Didefinisikan di sini karena
+#: ini kosakata siklus hidup panggilan; lapisan web mengimpornya dari modul ini.
+OUTCOME_PENDING = "pending"
+OUTCOME_ANSWERED = "answered"
+OUTCOME_REJECTED_WHITELIST = "rejected_whitelist"
+OUTCOME_REJECTED_RATELIMIT = "rejected_ratelimit"
+OUTCOME_REJECTED_CAPACITY = "rejected_capacity"
+OUTCOME_REJECTED_DUPLICATE = "rejected_duplicate"
+OUTCOME_ERROR = "error"
 
 
 class SessionState(Enum):

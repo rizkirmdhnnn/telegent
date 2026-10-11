@@ -17,20 +17,24 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
+from telegent.telegram.call_session import (
+    END_REASON_CALLER,
+    END_REASON_ERROR,
+    END_REASON_REJECTED,
+    OUTCOME_ANSWERED,
+    OUTCOME_ERROR,
+    OUTCOME_PENDING,
+    OUTCOME_REJECTED_CAPACITY,
+    OUTCOME_REJECTED_DUPLICATE,
+    OUTCOME_REJECTED_RATELIMIT,
+    OUTCOME_REJECTED_WHITELIST,
+)
 from telegent.web.db import models
 from telegent.web.db.base import Database, utcnow
 
 log = logging.getLogger("telegent.web.call_store")
 
-#: Outcome panggilan (spesifikasi §5.5).
-OUTCOME_PENDING = "pending"
-OUTCOME_ANSWERED = "answered"
-OUTCOME_REJECTED_WHITELIST = "rejected_whitelist"
-OUTCOME_REJECTED_RATELIMIT = "rejected_ratelimit"
-OUTCOME_REJECTED_CAPACITY = "rejected_capacity"
-OUTCOME_REJECTED_DUPLICATE = "rejected_duplicate"
-OUTCOME_ERROR = "error"
-
+#: Outcome & end_reason berasal dari `call_session` (satu sumber kebenaran).
 ALL_OUTCOMES = (
     OUTCOME_PENDING,
     OUTCOME_ANSWERED,
@@ -40,11 +44,6 @@ ALL_OUTCOMES = (
     OUTCOME_REJECTED_DUPLICATE,
     OUTCOME_ERROR,
 )
-
-#: Alasan berakhir (spesifikasi §5.5).
-END_REASON_CALLER = "caller_hangup"
-END_REASON_REJECTED = "rejected"
-END_REASON_ERROR = "error"
 
 #: Pembicara transkrip (spesifikasi §5.6).
 SPEAKER_CALLER = "caller"

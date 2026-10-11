@@ -365,19 +365,30 @@ Format: `event: <tipe>\ndata: <json>\n\n`. Sertakan `id:` untuk resume ringan da
 
 | `event` | Payload (contoh) |
 |---|---|
-| `status` | `{"running": true, "state": "active", "active_calls": 2}` |
-| `call.incoming` | `{"user_id": 123, "call_id": 9, "outcome": "pending"}` |
-| `call.started` | `{"call_id": 9, "user_id": 123, "started_at": "..."}` |
-| `call.ended` | `{"call_id": 9, "duration_sec": 42, "end_reason": "caller_hangup"}` |
-| `transcript` | `{"call_id": 9, "speaker": "caller", "text": "...", "at": "..."}` |
-| `tool_call` | `{"call_id": 9, "name": "end_call", "status": "ok", "duration_ms": 12}` |
+| `status` | `{"running": true, "state": "running", "active_calls": 2}` |
+| `call.incoming` | `{"user_id": 123, "tg_call_id": 9, "outcome": "pending"}` |
+| `call.started` | `{"tg_call_id": 9, "user_id": 123, "started_at": "..."}` |
+| `call.ended` | `{"tg_call_id": 9, "duration_sec": 42, "end_reason": "caller_hangup"}` |
+| `transcript` | `{"tg_call_id": 9, "speaker": "caller", "text": "...", "at": "..."}` |
+| `tool_call` | `{"tg_call_id": 9, "name": "end_call", "status": "ok", "duration_ms": 12}` |
 | `log` | `{"level": "INFO", "logger": "telegent.call", "message": "...", "at": "..."}` |
 | `runtime.error` | `{"message": "..."}` |
 
+> **`status` terbit pada:** bot berhasil start, bot diminta berhenti, runtime
+> berhenti setelah berhenti sendiri, dan setiap kali `PUT /settings` mengubah
+> pending-restart. Nilai `state` berasal dari siklus hidup bot:
+> `running`/`stopping`/`stopped`.
+
+> **Satu penerbit per kejadian.** Event `call.*` disiarkan oleh `CallRecorder`
+> (satu-satunya yang tahu `record_id`). Jalur `_emit` pada `TelegentApp` hanya
+> dipakai sebagai jalan keluar bila tidak ada `CallObserver` terpasang —
+> sehingga tidak mungkin terkirim dua kali ke bus.
+
 > **Catatan Fase 3:** penanda payload memakai `tg_call_id` (bukan `call_id`)
 > supaya tidak bentrok dengan `call_record.id` yang dipakai endpoint §6.6.
-> Ketiga endpoint narrative (`call.*`, `transcript`, `tool_call`) juga
-> menyertakan `record_id` bila barisnya sudah dibuat.
+> Ketiga event naratif (`call.*`, `transcript`, `tool_call`) menyertakan
+> `record_id` bila barisnya sudah dibuat; pada `call.incoming` nilainya masih
+> `null` karena baris dibuat setelah event terbit.
 
 Log stream memakai buffer terbatas (`log_buffer_lines`); saat klien terlalu lambat,
 event di-drop (bukan memblok bangunan penerbit).

@@ -11,7 +11,7 @@ import csv
 import io
 import json
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
@@ -29,6 +29,7 @@ from telegent.web.call_store import (
     list_transcripts,
 )
 from telegent.web.db import models
+from telegent.web.db.base import Database
 from telegent.web.deps import AdminDep, CallRecorderDep, CsrfDep, DatabaseDep, RuntimeDep
 from telegent.web.errors import APIError
 from telegent.web.runtime import RuntimeController
@@ -99,7 +100,10 @@ def _parse_dt(value: str | None, *, field: str) -> datetime | None:
             422, "invalid_filter", f"Parameter '{field}' bukan tanggal yang valid."
         ) from exc
     if parsed.tzinfo is not None:
-        parsed = parsed.astimezone(tz=None).replace(tzinfo=None)
+        # `astimezone(tz=None)` mengonversi ke waktu LOKAL, bukan UTC; kolom
+        # database menyimpan naive UTC, jadi zona waktu lokal akan menggeser
+        # rentang filter sebesar offset mesin.
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
     return parsed
 
 
@@ -148,7 +152,7 @@ def _decode(raw: str | None) -> Any:
         return raw
 
 
-async def _require_call(db: DatabaseDep, record_id: int) -> models.CallRecord:
+async def _require_call(db: Database, record_id: int) -> models.CallRecord:
     """Ambil record atau gagalkan dengan 404 yang konsisten."""
     row = await get_call(db, record_id)
     if row is None:

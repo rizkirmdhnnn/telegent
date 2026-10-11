@@ -53,9 +53,14 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 
 ## Fase 3 — Pemantauan
 
+> **Status: selesai + review diperbaiki.** 439 tes hijau, pyright & svelte-check bersih.
+> Satu penerbit event `call.*` (`CallRecorder`; `_emit_call` hanya jadi jalan keluar
+> bila tidak ada observer), `started_at` digeser saat panggilan aktif, `record_id`
+> ikut di semua event, `runtime.error` terbit, dan filter tanggal dikonversi ke UTC.
+
 - [x] **E1** Hook persistensi: call record, transkrip, tool call — L
 - [x] **E2** API pemantauan (aktif, riwayat, detail, hangup) — M
-- [ ] **E3** UI pemantauan (dashboard, daftar/detail panggilan, log live) — L
+- [x] **E3** UI pemantauan (dashboard, daftar/detail panggilan, log live) — L
 
 ## Fase 4 — Kontrol & retensi
 

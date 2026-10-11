@@ -7,7 +7,13 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from telegent.logging_setup import set_root_level
-from telegent.web.deps import AdminDep, CsrfDep, RuntimeDep, StoreDep
+from telegent.web.deps import (
+    AdminDep,
+    CallRecorderDep,
+    CsrfDep,
+    RuntimeDep,
+    StoreDep,
+)
 from telegent.web.schemas.settings import (
     SettingsListResponse,
     UpdateSettingsRequest,
@@ -49,6 +55,7 @@ async def update_settings(
     admin: CsrfDep,
     store: StoreDep,
     runtime: RuntimeDep,
+    recorder: CallRecorderDep,
     request: Request,
     payload: UpdateSettingsRequest,
 ) -> UpdateSettingsResponse:
@@ -63,6 +70,10 @@ async def update_settings(
         # Level log berlaku untuk seluruh proses, bukan hanya bot; terapkan
         # seketika agar aliran `/logs/stream` ikut berubah.
         set_root_level(await store.get("log_level"))
+    if "store_transcripts" in payload.changes:
+        # Ditandai `hot`, jadi harus berlaku seketika: tanpa ini, toggle di UI
+        # diam-diam baru berlaku setelah restart (Q13).
+        recorder.set_store_transcripts(bool(await store.get("store_transcripts")))
     if result.applied or result.needs_restart:
         await runtime.refresh_settings()
 
