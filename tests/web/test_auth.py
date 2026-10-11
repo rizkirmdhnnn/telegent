@@ -70,6 +70,23 @@ def test_setup_menolak_password_pendek(live_client: TestClient) -> None:
     assert resp.json()["error"]["code"] == "password_too_short"
 
 
+def test_setup_menolak_username_hanya_spasi(live_client: TestClient) -> None:
+    """`min_length=1` lolos untuk "   "; penolakan harus terjadi setelah `.strip()`."""
+    resp = live_client.post(
+        "/api/setup/admin", json={"username": "   ", "password": PASSWORD}
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "validation_error"
+
+
+def test_username_dikelilingi_spasi_dibersihkan(live_client: TestClient) -> None:
+    resp = live_client.post(
+        "/api/setup/admin", json={"username": "  admin  ", "password": PASSWORD}
+    )
+    assert resp.status_code == 200, resp.text
+    assert live_client.get("/api/auth/me").json()["username"] == "admin"
+
+
 async def test_password_disimpan_sebagai_hash(
     live_client: TestClient, bootstrap: BootstrapConfig
 ) -> None:

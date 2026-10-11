@@ -165,9 +165,14 @@ def fake_client_factory(credentials: Any, workdir: Path) -> Any:
 
 
 def mask_phone(phone: str) -> str:
-    """Sembunyikan sebagian nomor telepon agar tidak masuk log penuh."""
-    tail = phone[-4:] if len(phone) > 4 else "****"
-    return f"***{tail}"
+    """Sembunyikan sebagian nomor telepon agar tidak masuk log penuh.
+
+    Nomor yang terlalu pendek disamarkan seluruhnya — menyisakan 4 digit terakhir
+    dari angka pendek bisa jadi lebih informatif daripada tidak sama sekali.
+    """
+    if len(phone) <= 4:
+        return "*" * len(phone)
+    return f"***{phone[-4:]}"
 
 
 # ------------------------------------------------------------------ bot tiruan

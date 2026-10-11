@@ -30,6 +30,10 @@ _ISOLATED_ENV_KEYS = (
     "TELEGENT_AUTOSTART_BOT",
     "TELEGENT_SECRET_KEY",
     "TELEGENT_FRONTEND_DIST",
+    # Mode fake hanya boleh aktif lewat eksplisit di server e2e; shell developer
+    # yang menyisakan `TELEGENT_FAKE=1` tidak boleh mengubah hasil tes.
+    "TELEGENT_FAKE",
+    "TELEGENT_FAKE_CALL_INTERVAL",
     # konfigurasi runtime lama (untuk uji impor .env)
     "TELEGRAM_API_ID",
     "TELEGRAM_API_HASH",
