@@ -64,7 +64,14 @@ Legenda: `[ ]` belum · `[~]` dikerjakan · `[x]` selesai. Estimasi: S/M/L/XL.
 
 ## Fase 4 — Kontrol & retensi
 
-- [ ] **F1** API kontrol runtime (status/start/stop/restart/apply) — M
+> **Status: F1 selesai.** Keputusan yang diambil:
+> - `stop`/`restart` memakai **graceful drain** (bukan menolak 409): panggilan
+>   aktif diberi `schedule_hangup`, ditunggu maks 10 detik, lalu dipaksa `close()`
+>   bila masih hidup. Drain diuji di `test_runtime.py` & `test_runtime_control.py`.
+> - Mode restart **in-process saja** pada fase ini; fallback container (Q4)
+>   tidak dikerjakan — packaging container adalah Fase 5 (G1).
+
+- [x] **F1** API kontrol runtime (status/start/stop/restart/apply) — M
 - [ ] **F2** UI kontrol runtime + indikator "butuh restart" + alur apply — M
 - [ ] **F3** Pembersihan retensi (scheduler) — S
 

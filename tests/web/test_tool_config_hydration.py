@@ -26,7 +26,11 @@ class _FakeTelegent:
         self.settings = settings
         self.tools = ToolRegistry()
         self.stop_event = __import__("asyncio").Event()
+        self.sessions: dict[int, Any] = {}
         _FakeTelegent.created.append(self)
+
+    def active_sessions(self) -> list[Any]:
+        return list(self.sessions.values())
 
     async def start(self) -> None: ...
 

@@ -28,13 +28,18 @@ konfigurasi yang butuh restart — semuanya dari web.
 5. Audit untuk start/stop/restart/apply.
 
 ## Kriteria terima (Definition of Done)
-- [ ] `status` akurat dan berubah setelah start/stop.
-- [ ] `restart` idempoten & aman saat ada panggilan aktif (kebijakan drain/force jelas).
-- [ ] `apply` menghapus status `pending_restart`.
-- [ ] Aksi `stop`/`restart` tidak mematikan web.
-- [ ] Audit tercatat.
-- [ ] Tes status + start/stop (fake).
-- [ ] `pyright` hijau.
+- [x] `status` akurat dan berubah setelah start/stop.
+- [x] `restart` idempoten & aman saat ada panggilan aktif (kebijakan drain/force jelas).
+- [x] `apply` menghapus status `pending_restart`.
+- [x] Aksi `stop`/`restart` tidak mematikan web.
+- [x] Audit tercatat (sukses & gagal, dengan actor + IP).
+- [x] Tes status + start/stop (fake).
+- [x] `pyright` hijau.
 
 ## Catatan teknis / pertanyaan
-- Q4 (fallback restart container) bila in-process bermasalah.
+- **Keputusan F1 (drain):** `stop`/`restart` mengakhiri panggilan aktif secara
+  graceful alih-alih menolak dengan 409. Kontrak ini mengikat; mengubahnya berarti
+  mengubah `tests/web/test_runtime.py::test_stop_mendrain_panggilan_aktif` dan
+  `tests/web/test_runtime_control.py::test_stop_mengakhiri_panggilan_aktif_secara_graceful`.
+- **Q4 (fallback restart container)** diputuskan: fase ini tetap in-process saja;
+  fallback container tidak ada. Alasan: packaging container adalah Fase 5 (G1).

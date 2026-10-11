@@ -310,15 +310,29 @@ Penanganan error: `phone_invalid`, `code_invalid`, `code_expired`, `password_inv
 ### 6.5 Runtime
 | Method | Path | Body | Respons |
 |---|---|---|---|
-| GET | `/runtime/status` | — | `{running, state, since?, model, active_calls, logged_in_user?, last_error?}` |
-| POST | `/runtime/start` | — | `{ok}` |
-| POST | `/runtime/stop` | — | `{ok}` |
-| POST | `/runtime/restart` | — | `{ok}` |
+| GET | `/runtime/status` | — | `{running, state, since?, model, active_calls, logged_in_user?, last_error?, pending_restart[]}` |
+| POST | `/runtime/start` | — | status runtime setelah start |
+| POST | `/runtime/stop` | — | status runtime setelah stop |
+| POST | `/runtime/restart` | — | status runtime setelah restart |
 | POST | `/runtime/apply` | — | status runtime setelah perubahan tertunda diterapkan |
 
-> **Catatan Fase 1:** `GET /runtime/status` dan `POST /runtime/apply` diimplementasikan
-> lebih awal (tiket B3/C2) karena UI sudah membutuhkan keduanya. Kontrol
-> start/stop/restart eksplisit tetap menjadi tiket F1.
+> **Catatan Fase 4 (F1):** keempat aksi mutasi mengembalikan **status runtime**
+> (bukan `{ok}`) agar UI dapat memperbarui tampilan tanpa permintaan tambahan.
+> Semua aksi memerlukan sesi admin + CSRF, bersifat **idemoten** (klik ganda aman),
+> dan **selalu** tercatat di `audit_log` (`runtime.start`/`runtime.stop`/
+> `runtime.restart`/`runtime.apply`, `target="runtime"`) — sukses maupun gagal,
+> dengan `before`/`after` berupa status runtime sebelum & sesudah.
+>
+> **Kebijakan panggilan aktif (keputusan F1):** `stop` dan `restart` melakukan
+> *graceful drain* — setiap panggilan aktif diberi `schedule_hangup(reason=
+> "panel_hangup")` dan ditunggu hingga `DRAIN_TIMEOUT_SEC` (10 detik); sesi yang
+> masih hidup setelah batas itu dipaksa `close()`. Drain tidak pernah menolak
+> permintaan, dan tidak mematikan proses web. Jumlah panggilan yang diakhiri
+> tersedia sebagai `RuntimeController.last_drained`.
+>
+> `start` tidak pernah mengembalikan 500 untuk kondisi konfigurasi: status
+> `not_configured` / `needs_login` / `error` beserta `last_error` dikembalikan
+> dengan HTTP 200.
 
 ### 6.6 Panggilan
 | Method | Path | Query | Respons |
@@ -440,7 +454,7 @@ Gagal → catat `failed_attempts`; melebihi ambang → lockout sementara.
   lokal; kode galatnya dicatat di `last_error`.
 
 > Login/logout ditolak dengan `bot_running` selama runtime berjalan; setelah login sukses
-> admin diminta menjalankan bot dari panel (kontrol penuh menyusul di F1/F2).
+> admin diminta menjalankan bot dari panel (kontrol penuh tersedia sejak F1/F2).
 
 ### 8.5 Monitoring
 - Runtime menerbitkan event ke `EventBus`; endpoint SSE meneruskan ke klien.
@@ -456,10 +470,14 @@ Gagal → catat `failed_attempts`; melebihi ambang → lockout sementara.
   disiarkan.
 
 ### 8.6 Kontrol runtime
-- `start`: bangun & jalankan `TelegentApp` sebagai task. `stop`: sinyal stop + tunggu
-  `_shutdown`. `restart`: `stop` lalu `start` (di bawah lock, idempoten).
+- `start`: bangun & jalankan `TelegentApp` sebagai task. `stop`: graceful drain
+  panggilan aktif, sinyal stop, tunggu `_shutdown`. `restart`: `stop` lalu
+  `start` (di bawah lock, idempoten). Drain mendahului `stop`, sehingga `restart`
+  mewarisi perilaku yang sama.
 - Bila belum login/berkredensial → `start` mengembalikan status `needs_login`/`not_configured`
   (bukan error keras), UI mengarahkan ke wizard.
+- Semua aksi kontrol (termasuk `apply`) dicatat di `audit_log` dengan actor, IP,
+  serta status sebelum/sesudah — termasuk saat hasilnya gagal.
 
 ---
 

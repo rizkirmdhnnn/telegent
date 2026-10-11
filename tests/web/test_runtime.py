@@ -202,7 +202,12 @@ class _FakeTelegent:
         self.closed = False
         self.stop_event = asyncio.Event()
         self.active_calls = 0
+        self.sessions: dict[int, Any] = {}
         _FakeTelegent.created.append(self)
+
+    def active_sessions(self) -> list[Any]:
+        """Sesi aktif (dibuang saat panggilan selesai) — sama seperti TelegentApp."""
+        return list(self.sessions.values())
 
     async def start(self) -> None:
         if _FakeTelegent.fail_start:
@@ -420,6 +425,107 @@ async def test_stop_saat_tidak_running_aman(store, controller_factory) -> None:
     controller = controller_factory(store)
     status = await controller.stop()
     assert status.state is RuntimeState.STOPPED
+
+
+# ------------------------------------------------------------- graceful drain
+
+
+class _FakeSession:
+    """Sesi palsu: `auto_close=False` berarti tidak pernah selesai sendiri.
+
+    `registry` adalah dict `app.sessions`; saat panggilan selesai, sesi dibuang
+    dari sana — meniru callback `on_stop` pada `TelegentApp`.
+    """
+
+    def __init__(self, *, registry: dict[int, Any], auto_close: bool = True) -> None:
+        self.user_id = 42
+        self.registry = registry
+        self.auto_close = auto_close
+        self.hangup_reasons: list[str] = []
+        self.closed = False
+
+    def schedule_hangup(self, min_wait: float = 0.0, *, reason: str) -> None:
+        self.hangup_reasons.append(reason)
+        if self.auto_close:
+            self.registry.pop(self.user_id, None)
+            self.closed = True
+
+    async def close(self) -> None:
+        self.closed = True
+        self.registry.pop(self.user_id, None)
+
+
+async def test_stop_mendrain_panggilan_aktif(store, controller_factory, tmp_path: Path) -> None:
+    await store.update(_CREDENTIALS)
+    _make_session(tmp_path)
+    controller = controller_factory(store)
+    await controller.start()
+
+    session = _FakeSession(registry=controller.app.sessions)  # type: ignore[attr-defined]
+    controller.app.sessions[42] = session  # type: ignore[attr-defined]
+    status = await controller.stop()
+
+    assert session.hangup_reasons == ["panel_hangup"]
+    assert controller.last_drained == 1
+    assert status.state is RuntimeState.STOPPED
+
+
+async def test_drain_memaksa_tutup_sesi_yang_macet(
+    store, controller_factory, tmp_path: Path
+) -> None:
+    """Sesi yang tidak pernah selesai harus ditutup, bukan menggantungkan stop."""
+    await store.update(_CREDENTIALS)
+    _make_session(tmp_path)
+    controller = controller_factory(store)
+    await controller.start()
+
+    session = _FakeSession(registry=controller.app.sessions, auto_close=False)  # type: ignore[attr-defined]
+    controller.app.sessions[42] = session  # type: ignore[attr-defined]
+    await controller.drain_active_calls(timeout=0.05)
+
+    assert session.closed is True
+    assert controller.last_drained == 1
+    await controller.stop()
+
+
+async def test_drain_mengabaikan_sesi_yang_gagal_jadwal(
+    store, controller_factory, tmp_path: Path
+) -> None:
+    """Kegagalan satu sesi tidak boleh membatalkan drain sesi lain."""
+
+    class _Broken(_FakeSession):
+        def schedule_hangup(self, min_wait: float = 0.0, *, reason: str) -> None:
+            raise RuntimeError("sesi rusak")
+
+    await store.update(_CREDENTIALS)
+    _make_session(tmp_path)
+    controller = controller_factory(store)
+    await controller.start()
+
+    healthy = _FakeSession(registry=controller.app.sessions)  # type: ignore[attr-defined]
+    controller.app.sessions[1] = healthy  # type: ignore[attr-defined]
+    broken = _Broken(
+        registry=controller.app.sessions, auto_close=False  # type: ignore[attr-defined]
+    )
+    broken.user_id = 2
+    controller.app.sessions[2] = broken  # type: ignore[attr-defined]
+
+    assert await controller.drain_active_calls(timeout=0.05) == 2
+    assert healthy.hangup_reasons == ["panel_hangup"]
+    await controller.stop()
+
+
+async def test_drain_tanpa_panggilan_aktif_mengembalikan_nol(
+    store, controller_factory, tmp_path: Path
+) -> None:
+    await store.update(_CREDENTIALS)
+    _make_session(tmp_path)
+    controller = controller_factory(store)
+    await controller.start()
+
+    assert await controller.drain_active_calls() == 0
+    assert controller.last_drained == 0
+    await controller.stop()
 
 
 async def test_shutdown_controller(store, controller_factory, tmp_path: Path) -> None:

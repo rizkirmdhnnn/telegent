@@ -221,7 +221,11 @@ async def test_status_event_terbit_setelah_berhenti(store: SettingsStore, tmp_pa
         def __init__(self, settings: Settings) -> None:
             self.settings = settings
             self._stop = __import__("asyncio").Event()
+            self.sessions: dict[int, Any] = {}
             _Running.instances.append(self)
+
+        def active_sessions(self) -> list[Any]:
+            return list(self.sessions.values())
 
         async def start(self) -> None: ...
 

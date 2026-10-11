@@ -34,9 +34,11 @@ bila tidak dikoreksi, implementasi memakai default.
   `bcrypt` bila dependensi ditolak. *Default: argon2.*
 - **Q3 (A5): Lockout.** Ambang & durasi? Rekomendasi: 5 percobaan gagal → lockout 15 menit
   (naik bertahap). *Default: 5 / 15 menit.*
-- **Q4 (A7): Restart in-process vs fallback container.** Bila restart klien in-process
-  terbukti tidak stabil, apakah boleh fallback ke restart container (dengan kompromi UX)?
-  *Default: fallback diizinkan sebagai opsi "mode restart" di config.*
+- **Q4 (A7): Restart in-process vs fallback container.** ~~ Bila restart klien
+  in-process terbukti tidak stabil, apakah boleh fallback ke restart container? ~~
+  **Diputuskan (Fase 4 / F1): tetap in-process saja.** Tidak ada mode container
+  pada fase ini; packaging container adalah G1 (Fase 5). Restart in-process
+  diserialisasi dengan `asyncio.Lock` dan selalu aman terhadap klik ganda.
 - **Q5 (A8): Kombinasi stream.** Satu endpoint `/events/stream` untuk semua (status/panggilan/
   transkrip) + `/logs/stream` terpisah. *Default: ya (dua endpoint).*
 - **Q6 (B1): SvelteKit vs Vite SPA.** Rekomendasi: **SvelteKit dengan `adapter-static`**

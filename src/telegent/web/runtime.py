@@ -17,7 +17,7 @@ from typing import Any, Awaitable, Callable, Optional
 from telegent.app import EventSink, TelegentApp
 from telegent.config import Settings
 from telegent.protocols import CallObserver
-from telegent.telegram.call_session import CallSession
+from telegent.telegram.call_session import END_REASON_PANEL, CallSession
 from telegent.web.db.base import utcnow
 from telegent.web.settings_registry import REGISTRY, ApplyMode
 from telegent.web.settings_store import NotConfigured, SettingsStore
@@ -25,6 +25,13 @@ from telegent.web.settings_store import NotConfigured, SettingsStore
 log = logging.getLogger("telegent.web.runtime")
 
 STOP_TIMEOUT_SEC = 20.0
+
+#: Batas tunggu graceful drain (F1): sebelum stop/restart, panggilan aktif
+#: diminta pamitan lebih dulu; yang masih tersisa setelah batas ini dipaksa tutup.
+DRAIN_TIMEOUT_SEC = 10.0
+
+#: Selang jeda saat menunggu sesi aktif benar-benar berakhir.
+DRAIN_POLL_SEC = 0.2
 
 #: Pabrik TelegentApp (di-override pada pengujian dengan fake).
 AppFactory = Callable[[Settings], TelegentApp]
@@ -98,6 +105,7 @@ class RuntimeController:
         self._since: str | None = None
         self._settings: Optional[Settings] = None
         self._pending_restart: list[str] = []
+        self._last_drained: int = 0
         self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------- properties
@@ -236,8 +244,70 @@ class RuntimeController:
                 self._since = None
                 self._publish_status()
 
+    @property
+    def last_drained(self) -> int:
+        """Jumlah panggilan aktif yang diakhiri graceful pada stop/restart terakhir."""
+        return self._last_drained
+
+    async def drain_active_calls(self, timeout: float = DRAIN_TIMEOUT_SEC) -> int:
+        """Akhiri panggilan aktif secara graceful; kembalikan jumlah yang diakhiri.
+
+        Sesi diberi waktu pamitan (`schedule_hangup`) alih-alih langsung ditutup,
+        sehingga penelpon tidak mendengar pemutusan mendadak. Sesi yang masih hidup
+        setelah `timeout` dipaksa `close()` — drain tidak boleh menggantungkan
+        proses web. Mengembalikan jumlah sesi yang masih hidup saat drain dimulai.
+        """
+        sessions = self.active_sessions()
+        self._last_drained = len(sessions)
+        if not sessions:
+            return 0
+
+        for session in sessions:
+            try:
+                session.schedule_hangup(reason=END_REASON_PANEL)
+            except Exception:  # noqa: BLE001 - satu sesi gagal tidak boleh membatalkan drain
+                log.warning("Gagal menjadwalkan hangup sesi %s.", session.user_id, exc_info=True)
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while True:
+            still_open = [
+                session for session in sessions if self._session_alive(session)
+            ]
+            if not still_open:
+                break
+            if loop.time() >= deadline:
+                log.warning(
+                    "%d panggilan aktif tidak selesai dalam %ss; dipaksa ditutup.",
+                    len(still_open),
+                    timeout,
+                )
+                for session in still_open:
+                    try:
+                        await session.close()
+                    except Exception:  # noqa: BLE001 - closure paksa tetap tidak boleh menggagalkan stop
+                        log.warning(
+                            "Gagal menutup sesi %s.", session.user_id, exc_info=True
+                        )
+                break
+            await asyncio.sleep(DRAIN_POLL_SEC)
+        return self._last_drained
+
+    def _session_alive(self, session: CallSession) -> bool:
+        """True bila sesi masih terdaftar pada aplikasi yang sedang berjalan.
+
+        Sesi yang sudah selesai akan dibuang dari `app.sessions` oleh callback
+        `on_stop`; itulah sinyal drain bahwa panggilan sudah benar-benar berakhir.
+        """
+        if self._app is None:
+            return False
+        return any(existing is session for existing in self._app.active_sessions())
+
     async def stop(self) -> RuntimeStatus:
-        """Hentikan bot (menunggu sesi ditutup)."""
+        """Hentikan bot: drain panggilan aktif lebih dulu, lalu tutup."""
+        # Drain memakai `app.active_sessions()`; saat `_app` sudah None (bot tidak
+        # hidup) tidak ada sesi yang perlu ditutup.
+        self._last_drained = await self.drain_active_calls()
         async with self._lock:
             app = self._app
             if app is None:

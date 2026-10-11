@@ -22,6 +22,10 @@ class _FakeTelegent:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.stop_event = __import__("asyncio").Event()
+        self.sessions: dict[int, Any] = {}
+
+    def active_sessions(self) -> list[Any]:
+        return list(self.sessions.values())
 
     async def start(self) -> None: ...
 
@@ -103,9 +107,11 @@ def test_apply_tanpa_perubahan_hanya_menyegarkan(live_client: TestClient, live_r
     assert resp.status_code == 200
     assert resp.json()["state"] == "stopped"
 
-    # Tidak ada restart: state tetap stopped dan tak ada audit apply.
-    audit = live_client.get("/api/audit").json()
-    assert all(item["action"] != "runtime.apply" for item in audit["items"])
+    # F1: apply selalu dicatat, meski tidak ada perubahan yang perlu restart.
+    audit = live_client.get("/api/audit", params={"action": "runtime.apply"}).json()
+    assert audit["total"] == 1
+    assert audit["items"][0]["actor"] == "admin"
+    assert audit["items"][0]["after"]["state"] == "stopped"
 
 
 def test_apply_mencatat_audit_saat_ada_perubahan(live_client: TestClient, live_runtime) -> None:
