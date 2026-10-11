@@ -537,10 +537,18 @@ class CallSession:
 
                 now = time.monotonic()
                 if not self._idle_prompted:
-                    caller_idle = now - self._last_caller_activity
+                    # Jendela diam dihitung sejak kejadian TERAKHIR — baik
+                    # penelpon bicara, atau AI selesai berbicara. Kalau hanya
+                    # dihitung sejak penelpon bicara, jawaban AI yang panjang
+                    # membuat prompt langsung menyala begitu AI berhenti bicara
+                    # — penelpon tidak sempat menjawab sama sekali.
+                    window_start = max(
+                        self._last_caller_activity, self._last_output_activity
+                    )
+                    silent_for = now - window_start
                     ai_idle = now - self._last_output_activity
                     if (
-                        caller_idle >= self._settings.idle_prompt_seconds
+                        silent_for >= self._settings.idle_prompt_seconds
                         and ai_idle >= IDLE_AI_QUIET_SEC
                         and self.tg_out_queue.empty()
                         and not self._tool_tasks
@@ -548,7 +556,8 @@ class CallSession:
                         self._idle_prompted = True
                         self._idle_deadline = now + self._settings.idle_hangup_seconds
                         self._log.info(
-                            "Penelpon diam %.0f dtk; mengirim konfirmasi.", caller_idle
+                            "Diam %.0f dtk sejak percakapan terakhir; mengirim konfirmasi.",
+                            silent_for,
                         )
                         await self._send_prompt(self._settings.idle_prompt_instruction)
                 elif now >= self._idle_deadline:
