@@ -34,6 +34,20 @@ loop yang sama. Bot start/stop/restart lewat UI **tidak** mematikan panel.
 
 ---
 
+## Fitur Web Panel
+
+Panel web bawaan (FastAPI + SvelteKit 5 + Tailwind v4) menyediakan antarmuka terpadu untuk mengelola seluruh aspek bot:
+
+- **Dashboard & Pemantauan Real-Time** — Status runtime bot (`running`/`stopped`/`needs_login`), kontrol *Start/Stop/Restart* dengan *graceful drain* (10 detik), dan feed aktivitas live panggilan via Server-Sent Events (SSE).
+- **Riwayat Panggilan & Transkrip Lengkap** — Pencatatan seluruh panggilan (diterima/ditolak/kapasitas penuh), transkrip dialog dua arah (*Caller* vs *AI*), jejak eksekusi *AI tool calls*, serta ekspor riwayat ke CSV.
+- **Login Telegram Interaktif** — Wizard login mandiri (OTP Telegram + 2FA Cloud Password) langsung dari browser tanpa perlu terminal interaktif. Dilengkapi deteksi *session mismatch* dan *clean logout*.
+- **Manajemen Kredensial & Pengaturan** — Penyimpanan kredensial Telegram API & Gemini API Key terenkripsi (Fernet), pemisahan setting *hot-applied* vs *pending-restart*, serta migrasi otomatis dari `.env` lama.
+- **Observabilitas & Redaksi Log** — Aliran log server langsung (SSE) dengan redaksi otomatis data rahasia (*sensitive data masking*) dan log audit setiap mutasi administratif.
+- **Keamanan & Akun Admin** — Autentikasi Argon2, proteksi *brute-force account lockout* (5x gagal = 15 menit lockout), 2FA TOTP dengan SVG QR Code, dan *double-submit CSRF protection*.
+- **Tampilan & Lokalisasi** — Pilihan tema (*Light*, *Dark*, *System*) dan dukungan dwibahasa (Bahasa Indonesia & English).
+
+---
+
 ## Setup Lokal (uv)
 
 Proyek memakai [uv](https://docs.astral.sh/uv/) untuk mengelola dependensi & lingkungan
