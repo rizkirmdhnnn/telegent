@@ -42,13 +42,13 @@
 </script>
 
 {#if auth.loading}
-	<div class="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+	<div class="flex min-h-screen items-center justify-center bg-bg text-fg">
 		<div class="flex flex-col items-center gap-3">
-			<svg class="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none">
+			<svg class="h-8 w-8 animate-spin text-accent dark:text-accent-2" viewBox="0 0 24 24" fill="none">
 				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 			</svg>
-			<p class="text-xs font-medium text-slate-500 dark:text-slate-400">{t('app.loading')}</p>
+			<p class="font-mono text-xs uppercase tracking-wider text-muted">{t('app.loading')}</p>
 		</div>
 	</div>
 {:else}

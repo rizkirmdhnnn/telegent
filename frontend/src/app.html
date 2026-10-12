@@ -4,6 +4,12 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Telegent Web Panel</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Hanken+Grotesk:wght@300;400;500;600;700&display=swap"
+			rel="stylesheet"
+		/>
 		%sveltekit.head%
 		<script>
 			// Terapkan tema sebelum render pertama agar tidak ada kedipan terang.
@@ -20,7 +26,7 @@
 			}
 		</script>
 	</head>
-	<body class="bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-50">
+	<body class="bg-bg text-fg antialiased selection:bg-accent selection:text-white">
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

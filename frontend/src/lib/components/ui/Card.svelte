@@ -13,16 +13,16 @@
 </script>
 
 <div
-	class="rounded-xl border border-slate-200 bg-white p-5 shadow-xs transition-shadow dark:border-slate-800 dark:bg-slate-900 {className}"
+	class="rounded-2xl border border-border bg-white p-5 shadow-xs transition-shadow dark:border-white/10 dark:bg-deep {className}"
 >
 	{#if title || headerActions}
-		<div class="mb-4 flex items-start justify-between border-b border-slate-100 pb-3 dark:border-slate-800/80">
+		<div class="mb-4 flex items-start justify-between border-b border-border/70 pb-3 dark:border-white/10">
 			<div>
 				{#if title}
-					<h3 class="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
+					<h3 class="text-base font-normal tracking-[-0.02em] text-fg">{title}</h3>
 				{/if}
 				{#if subtitle}
-					<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
+					<p class="mt-0.5 text-xs text-muted">{subtitle}</p>
 				{/if}
 			</div>
 			{#if headerActions}

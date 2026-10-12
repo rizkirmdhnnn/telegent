@@ -21,24 +21,24 @@
 	}: Props = $props();
 
 	const variantClasses = {
-		primary: 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm disabled:bg-blue-400',
-		secondary: 'bg-slate-100 text-slate-900 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700',
-		outline: 'border border-slate-300 bg-transparent text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800',
-		destructive: 'bg-red-600 text-white hover:bg-red-700 shadow-sm disabled:bg-red-400',
-		ghost: 'bg-transparent text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+		primary: 'bg-clay text-white hover:bg-clay-hover shadow-2xs',
+		secondary: 'bg-bg-2 text-fg hover:bg-bg-3 border border-border dark:bg-deep-2 dark:border-white/10 dark:hover:bg-deep',
+		outline: 'border border-border-2 bg-transparent text-fg hover:bg-bg-2 dark:border-white/20 dark:text-fg dark:hover:bg-white/5',
+		destructive: 'bg-red-700 text-white hover:bg-red-800 shadow-2xs dark:bg-red-800 dark:hover:bg-red-700',
+		ghost: 'bg-transparent text-fg hover:bg-bg-2 dark:text-fg dark:hover:bg-white/5'
 	};
 
 	const sizeClasses = {
-		sm: 'px-2.5 py-1.5 text-xs rounded-md font-medium',
-		md: 'px-4 py-2 text-sm rounded-lg font-medium',
-		lg: 'px-5 py-2.5 text-base rounded-lg font-semibold'
+		sm: 'h-8 px-3.5 text-xs font-medium',
+		md: 'h-10 px-5 text-sm font-medium',
+		lg: 'h-12 px-6 text-base font-medium'
 	};
 </script>
 
 <button
 	{type}
 	disabled={disabled || loading}
-	class="inline-flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus:ring-offset-slate-900 {variantClasses[variant]} {sizeClasses[size]} {className}"
+	class="inline-flex items-center justify-center rounded-full font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:cursor-not-allowed disabled:opacity-50 {variantClasses[variant]} {sizeClasses[size]} {className}"
 	{...rest}
 >
 	{#if loading}

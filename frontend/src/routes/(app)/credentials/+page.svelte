@@ -33,7 +33,6 @@
 	let geminiMessage = $state('');
 	let geminiError = $state('');
 
-
 	const tgDirty = $derived(apiId !== '' || apiHash !== '');
 	const geminiDirty = $derived(geminiApiKey !== '');
 
@@ -151,20 +150,20 @@
 
 <div class="mx-auto max-w-4xl space-y-6 pb-16">
 	<div>
-		<h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{t('credentials.title')}</h1>
-		<p class="text-xs text-slate-500 dark:text-slate-400">{t('credentials.subtitle')}</p>
+		<h1 class="text-2xl font-normal tracking-[-0.03em] text-fg">{t('credentials.title')}</h1>
+		<p class="text-xs text-muted mt-0.5">{t('credentials.subtitle')}</p>
 	</div>
 
 	<!-- Kredensial Telegram -->
 	<Card title={t('credentials.telegram_card')} subtitle={t('credentials.telegram_desc')}>
 		<form onsubmit={saveTelegram} class="space-y-4 pt-2">
 			{#if tgMessage}
-				<div class="rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+				<div class="rounded-2xl border border-accent/25 bg-accent/10 p-3 font-mono text-xs text-accent dark:text-accent-2">
 					{tgMessage}
 				</div>
 			{/if}
 			{#if tgError}
-				<div class="rounded-lg bg-red-50 p-2.5 text-xs text-red-600 dark:text-red-950/40 dark:text-red-400">
+				<div class="rounded-2xl border border-error/20 bg-error/10 p-3 font-mono text-xs text-error">
 					{tgError}
 				</div>
 			{/if}
@@ -202,12 +201,12 @@
 	<Card title={t('credentials.gemini_card')} subtitle={t('credentials.gemini_desc')}>
 		<form onsubmit={saveGemini} class="space-y-4 pt-2">
 			{#if geminiMessage}
-				<div class="rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+				<div class="rounded-2xl border border-accent/25 bg-accent/10 p-3 font-mono text-xs text-accent dark:text-accent-2">
 					{geminiMessage}
 				</div>
 			{/if}
 			{#if geminiError}
-				<div class="rounded-lg bg-red-50 p-2.5 text-xs text-red-600 dark:text-red-950/40 dark:text-red-400">
+				<div class="rounded-2xl border border-error/20 bg-error/10 p-3 font-mono text-xs text-error">
 					{geminiError}
 				</div>
 			{/if}
@@ -232,9 +231,8 @@
 		</form>
 	</Card>
 
-	<div class="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/60 p-4 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300">
+	<div class="flex items-center gap-3 rounded-2xl border border-border bg-bg-2 p-4 text-xs text-fg dark:border-white/10 dark:bg-deep">
 		<Badge variant="default">{t('credentials.next_step')}</Badge>
-		<span>{t('credentials.next_step_desc')}</span>
+		<span class="leading-relaxed">{t('credentials.next_step_desc')}</span>
 	</div>
-
-	</div>
+</div>

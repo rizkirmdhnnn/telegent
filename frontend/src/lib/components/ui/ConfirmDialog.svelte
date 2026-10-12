@@ -39,7 +39,7 @@
 
 {#if open}
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-deep-2/60 p-4 backdrop-blur-xs"
 		role="presentation"
 		onclick={(event) => {
 			if (event.target === event.currentTarget && !busy) oncancel?.();
@@ -49,19 +49,19 @@
 		}}
 	>
 		<div
-			class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-900"
+			class="w-full max-w-md rounded-3xl border border-border bg-bg p-6 shadow-2xl dark:border-white/10 dark:bg-deep"
 			role="alertdialog"
 			aria-modal="true"
 		>
-			<h3 class="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
+			<h3 class="text-lg font-normal tracking-[-0.02em] text-fg">{title}</h3>
 			{#if description}
-				<p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{description}</p>
+				<p class="mt-2 text-sm text-fg-2 leading-relaxed">{description}</p>
 			{/if}
 			{#if children}
-				<div class="mt-3 text-xs text-slate-500 dark:text-slate-400">{@render children()}</div>
+				<div class="mt-3 text-xs text-muted">{@render children()}</div>
 			{/if}
 
-			<div class="mt-5 flex items-center justify-end gap-2">
+			<div class="mt-6 flex items-center justify-end gap-2.5">
 				<Button
 					variant="outline"
 					size="sm"

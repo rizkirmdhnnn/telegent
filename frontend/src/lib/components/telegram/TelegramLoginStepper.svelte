@@ -189,31 +189,31 @@
 
 <Card title={t('telegram.login_title')} subtitle={t('telegram.login_subtitle')}>
 	<!-- Indikator langkah -->
-	<div class="flex items-center gap-1.5 pb-1">
+	<div class="flex items-center gap-2 pb-2">
 		{#each steps as item, index}
 			{@const reached = index <= activeIndex}
 			<div
-				class="flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-colors {reached
-					? 'bg-blue-600 text-white'
-					: 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}"
+				class="flex h-7 w-7 items-center justify-center rounded-full font-mono text-xs font-medium transition-colors {reached
+					? 'bg-clay text-white shadow-xs'
+					: 'bg-bg-2 text-muted dark:bg-deep-2 dark:text-muted border border-border dark:border-white/10'}"
 				aria-current={item.id === step ? 'step' : undefined}
 			>
 				{index + 1}
 			</div>
 			{#if index < steps.length - 1}
-				<div class="h-px flex-1 {index < activeIndex ? 'bg-blue-500' : 'bg-slate-200 dark:bg-slate-700'}"></div>
+				<div class="h-px flex-1 {index < activeIndex ? 'bg-clay' : 'bg-border dark:bg-white/10'}"></div>
 			{/if}
 		{/each}
 	</div>
-	<p class="pb-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+	<p class="pb-2 font-mono text-xs uppercase tracking-wider text-muted">
 		{t(steps[activeIndex]?.labelKey ?? 'telegram.step_phone')}
 	</p>
 
 	{#if errorCode}
 		<div
-			class="rounded-lg p-2.5 text-xs {floodError
-				? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
-				: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400'}"
+			class="rounded-2xl border p-3 font-mono text-xs {floodError
+				? 'border-warm/30 bg-warm/15 text-warm'
+				: 'border-error/25 bg-error/10 text-error'}"
 			role="alert"
 		>
 			{t(`errors.${errorCode}`, errorFallback)}
@@ -290,15 +290,15 @@
 			</div>
 		</form>
 	{:else}
-		<div class="flex items-start gap-3 pt-2">
-			<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+		<div class="flex items-start gap-3.5 pt-2">
+			<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent dark:text-accent-2">
 				<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 					<polyline points="20 6 9 17 4 12"></polyline>
 				</svg>
 			</div>
 			<div>
-				<p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('telegram.success_title')}</p>
-				<p class="text-xs text-slate-500 dark:text-slate-400">{t('telegram.success_desc')}</p>
+				<p class="text-sm font-medium text-fg">{t('telegram.success_title')}</p>
+				<p class="mt-0.5 text-xs text-muted">{t('telegram.success_desc')}</p>
 			</div>
 		</div>
 	{/if}

@@ -139,10 +139,10 @@
 	}
 </script>
 
-<div class="mx-auto max-w-4xl space-y-6">
+<div class="mx-auto max-w-4xl space-y-6 pb-16">
 	<div>
-		<h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{t('account.title')}</h1>
-		<p class="text-xs text-slate-500 dark:text-slate-400">
+		<h1 class="text-2xl font-normal tracking-[-0.03em] text-fg">{t('account.title')}</h1>
+		<p class="text-xs text-muted mt-0.5">
 			Kelola kata sandi, autentikasi dua faktor (2FA), dan preferensi akun admin.
 		</p>
 	</div>
@@ -151,12 +151,12 @@
 	<Card title={t('account.change_password')}>
 		<form onsubmit={handlePasswordChange} class="max-w-md space-y-3 pt-1">
 			{#if pwdMessage}
-				<div class="rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+				<div class="rounded-2xl border border-accent/25 bg-accent/10 p-3 font-mono text-xs text-accent dark:text-accent-2">
 					{pwdMessage}
 				</div>
 			{/if}
 			{#if pwdError}
-				<div class="rounded-lg bg-red-50 p-2.5 text-xs text-red-600 dark:bg-red-950/40 dark:text-red-400">
+				<div class="rounded-2xl border border-error/20 bg-error/10 p-3 font-mono text-xs text-error">
 					{pwdError}
 				</div>
 			{/if}
@@ -184,7 +184,7 @@
 				autocomplete="new-password"
 			/>
 
-			<Button type="submit" variant="primary" loading={pwdLoading} class="mt-2">
+			<Button type="submit" variant="primary" loading={pwdLoading} class="mt-3">
 				{t('account.save_password')}
 			</Button>
 		</form>
@@ -194,19 +194,19 @@
 	<Card title={t('account.totp_title')} subtitle={t('account.totp_desc')}>
 		<div class="pt-2">
 			{#if totpSuccess}
-				<div class="mb-3 rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+				<div class="mb-3 rounded-2xl border border-accent/25 bg-accent/10 p-3 font-mono text-xs text-accent dark:text-accent-2">
 					{totpSuccess}
 				</div>
 			{/if}
 			{#if totpError}
-				<div class="mb-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-600 dark:bg-red-950/40 dark:text-red-400">
+				<div class="mb-3 rounded-2xl border border-error/20 bg-error/10 p-3 font-mono text-xs text-error">
 					{totpError}
 				</div>
 			{/if}
 
 			<div class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="text-sm font-medium text-slate-800 dark:text-slate-200">Status 2FA:</span>
+				<div class="flex items-center gap-2.5">
+					<span class="text-sm font-medium text-fg">Status 2FA:</span>
 					{#if auth.user?.totp_enabled}
 						<Badge variant="success">{t('account.totp_enabled_status')}</Badge>
 					{:else}
@@ -227,26 +227,26 @@
 
 			<!-- Wizard Setup TOTP -->
 			{#if totpSetupData && !auth.user?.totp_enabled}
-				<div class="mt-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-900/50">
-					<h4 class="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">Setup Aplikasi Autentikator</h4>
-					<p class="text-xs text-slate-500 mb-3">{t('account.scan_qr_desc')}</p>
+				<div class="mt-4 rounded-2xl border border-border bg-bg-2/60 p-5 dark:border-white/10 dark:bg-deep-2/60">
+					<h4 class="text-sm font-medium text-fg mb-1">Setup Aplikasi Autentikator</h4>
+					<p class="text-xs text-muted mb-4">{t('account.scan_qr_desc')}</p>
 
-					<div class="flex flex-col sm:flex-row items-center gap-5">
+					<div class="flex flex-col sm:flex-row items-center gap-6">
 						<!-- Render SVG QR -->
-						<div class="rounded-lg bg-white p-2 shadow-xs border border-slate-200">
+						<div class="rounded-2xl bg-white p-3 shadow-xs border border-border">
 							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 							{@html totpSetupData.qr_svg}
 						</div>
 
 						<div class="flex-1 space-y-3">
 							<div>
-								<span class="text-xs text-slate-400">Kunci Rahasia Manual:</span>
-								<code class="block font-mono text-xs font-semibold text-slate-700 dark:text-slate-300 break-all bg-slate-200/50 dark:bg-slate-800 p-1.5 rounded mt-1">
+								<span class="text-xs text-muted">Kunci Rahasia Manual:</span>
+								<code class="block font-mono text-xs font-medium text-fg break-all bg-bg dark:bg-deep p-2 rounded-xl border border-border/80 dark:border-white/10 mt-1">
 									{totpSetupData.secret}
 								</code>
 							</div>
 
-							<form onsubmit={confirmEnableTotp} class="space-y-2">
+							<form onsubmit={confirmEnableTotp} class="space-y-3">
 								<Input
 									label={t('account.enter_code')}
 									type="text"
@@ -271,12 +271,12 @@
 
 			<!-- Modal Nonaktifkan TOTP -->
 			{#if showDisableModal}
-				<div class="mt-4 rounded-xl border border-red-200 bg-red-50/30 p-4 dark:border-red-900/40 dark:bg-red-950/20">
-					<h4 class="text-sm font-semibold text-red-700 dark:text-red-400 mb-1">Nonaktifkan 2FA</h4>
-					<p class="text-xs text-slate-600 dark:text-slate-400 mb-3">
+				<div class="mt-4 rounded-2xl border border-error/25 bg-error/10 p-5">
+					<h4 class="text-sm font-medium text-error mb-1">Nonaktifkan 2FA</h4>
+					<p class="text-xs text-error/90 mb-3">
 						Masukkan 6 digit kode autentikator saat ini untuk mengonfirmasi penonaktifan:
 					</p>
-					<form onsubmit={confirmDisableTotp} class="max-w-xs space-y-2">
+					<form onsubmit={confirmDisableTotp} class="max-w-xs space-y-3">
 						<Input
 							type="text"
 							maxlength={6}
@@ -302,14 +302,14 @@
 	<Card title={t('account.preferences')}>
 		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 pt-1">
 			<div>
-				<label for="pref-language-select" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+				<label for="pref-language-select" class="block text-xs font-medium text-fg mb-1.5">
 					{t('account.language')}
 				</label>
 				<select
 					id="pref-language-select"
 					value={locale.current}
 					onchange={(e) => updatePreference('locale', (e.target as HTMLSelectElement).value)}
-					class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+					class="w-full rounded-xl border border-border-2 bg-bg px-3.5 py-2 text-sm text-fg transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none dark:border-white/15 dark:bg-deep-2/70 dark:text-fg"
 				>
 					<option value="id">Bahasa Indonesia (ID)</option>
 					<option value="en">English (EN)</option>
@@ -317,18 +317,18 @@
 			</div>
 
 			<div>
-				<label for="pref-theme-select" class="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+				<label for="pref-theme-select" class="block text-xs font-medium text-fg mb-1.5">
 					{t('account.theme')}
 				</label>
 				<select
 					id="pref-theme-select"
 					value={theme.current}
 					onchange={(e) => updatePreference('theme', (e.target as HTMLSelectElement).value)}
-					class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+					class="w-full rounded-xl border border-border-2 bg-bg px-3.5 py-2 text-sm text-fg transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none dark:border-white/15 dark:bg-deep-2/70 dark:text-fg"
 				>
 					<option value="system">Mengikuti Sistem (System)</option>
-					<option value="light">Terang (Light)</option>
-					<option value="dark">Gelap (Dark)</option>
+					<option value="light">Terang (Light - Krem Hangat)</option>
+					<option value="dark">Gelap (Dark - Deep Pine)</option>
 				</select>
 			</div>
 		</div>

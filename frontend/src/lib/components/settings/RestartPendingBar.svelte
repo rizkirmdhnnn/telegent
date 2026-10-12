@@ -32,10 +32,10 @@
 </script>
 
 {#if visible}
-	<div class="sticky bottom-6 z-30 mx-auto max-w-4xl rounded-2xl border border-amber-300 bg-amber-50/95 p-4 shadow-lg backdrop-blur-md dark:border-amber-800 dark:bg-amber-950/90">
+	<div class="sticky bottom-6 z-30 mx-auto max-w-4xl rounded-2xl border border-warm/30 bg-panel-clay/95 p-4 shadow-lg backdrop-blur-md dark:border-warm/30 dark:bg-deep-2/95">
 		<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 			<div class="flex items-center gap-3">
-				<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-xs">
+				<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warm text-white shadow-xs">
 					<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
 						<line x1="12" y1="9" x2="12" y2="13"></line>
@@ -43,14 +43,14 @@
 					</svg>
 				</div>
 				<div>
-					<h4 class="text-sm font-bold text-amber-900 dark:text-amber-200">
+					<h4 class="text-sm font-medium tracking-tight text-fg">
 						{t('settings.restart_needed_banner')}
 					</h4>
-					<p class="text-xs text-amber-700 dark:text-amber-400">
+					<p class="text-xs text-muted font-mono">
 						{t('settings.restart_pending_keys')}: {keys.join(', ')}
 					</p>
 					{#if runtime.actionError}
-						<p class="mt-1 text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+						<p class="mt-1 text-xs font-medium text-error" role="alert">
 							{runtime.actionError}
 						</p>
 					{/if}
@@ -64,7 +64,6 @@
 					loading={runtime.busy === 'apply'}
 					disabled={runtime.acting || runtime.transitioning}
 					onclick={() => (confirmOpen = true)}
-					class="bg-amber-600 hover:bg-amber-700 focus:ring-amber-500"
 				>
 					{t('settings.apply_and_restart')}
 				</Button>

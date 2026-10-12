@@ -2,46 +2,47 @@
 	import { runtime } from '$lib/stores/runtime.svelte';
 	import { t, tParams } from '$lib/i18n';
 
-	const stateColors: Record<string, { bg: string; dot: string; text: string }> = {
+	const stateColors: Record<string, { bg: string; dot: string; text: string; ping?: boolean }> = {
 		running: {
-			bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800',
-			dot: 'bg-emerald-500 animate-pulse',
-			text: 'text-emerald-700 dark:text-emerald-400'
+			bg: 'bg-accent/15 border-accent/25 dark:bg-accent/20 dark:border-accent/30',
+			dot: 'bg-accent dark:bg-accent-2 animate-pulse',
+			text: 'text-accent dark:text-accent-2'
 		},
 		starting: {
-			bg: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800',
-			dot: 'bg-blue-500 animate-ping',
-			text: 'text-blue-700 dark:text-blue-400'
+			bg: 'bg-clay/15 border-clay/30 dark:bg-clay/20 dark:border-clay/40',
+			dot: 'bg-clay',
+			ping: true,
+			text: 'text-clay dark:text-clay'
 		},
 		stopping: {
-			bg: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800',
-			dot: 'bg-amber-500',
-			text: 'text-amber-700 dark:text-amber-400'
+			bg: 'bg-warm/15 border-warm/30 dark:bg-warm/20 dark:border-warm/40',
+			dot: 'bg-warm',
+			text: 'text-warm dark:text-warm'
 		},
 		stopped: {
-			bg: 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700',
-			dot: 'bg-slate-400',
-			text: 'text-slate-600 dark:text-slate-400'
+			bg: 'bg-bg-2 border-border dark:bg-deep-2 dark:border-white/10',
+			dot: 'bg-muted-2',
+			text: 'text-muted dark:text-muted'
 		},
 		not_configured: {
-			bg: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800',
-			dot: 'bg-amber-500',
-			text: 'text-amber-700 dark:text-amber-400'
+			bg: 'bg-warm/15 border-warm/30 dark:bg-warm/20 dark:border-warm/40',
+			dot: 'bg-warm',
+			text: 'text-warm dark:text-warm'
 		},
 		needs_login: {
-			bg: 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800',
-			dot: 'bg-indigo-500',
-			text: 'text-indigo-700 dark:text-indigo-400'
+			bg: 'bg-clay/15 border-clay/30 dark:bg-clay/20 dark:border-clay/40',
+			dot: 'bg-clay',
+			text: 'text-clay dark:text-clay'
 		},
 		error: {
-			bg: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800',
-			dot: 'bg-red-500',
-			text: 'text-red-700 dark:text-red-400'
+			bg: 'bg-error/15 border-error/30 dark:bg-error/20 dark:border-error/40',
+			dot: 'bg-error',
+			text: 'text-error dark:text-red-300'
 		},
 		unknown: {
-			bg: 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700',
-			dot: 'bg-slate-300',
-			text: 'text-slate-500 dark:text-slate-400'
+			bg: 'bg-bg-2 border-border dark:bg-deep-2 dark:border-white/10',
+			dot: 'bg-muted-2',
+			text: 'text-muted'
 		}
 	};
 
@@ -54,12 +55,17 @@
 </script>
 
 <div
-	class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium shadow-2xs {currentStyle.bg} {currentStyle.text}"
+	class="inline-flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-xs font-medium shadow-2xs transition-colors {currentStyle.bg} {currentStyle.text}"
 >
-	<span class="h-2 w-2 rounded-full {currentStyle.dot}"></span>
+	<span class="relative flex h-2 w-2 shrink-0">
+		{#if currentStyle.ping}
+			<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-75"></span>
+		{/if}
+		<span class="relative inline-flex h-2 w-2 rounded-full {currentStyle.dot}"></span>
+	</span>
 	<span>{label}</span>
 	{#if runtime.status.active_calls > 0}
-		<span class="rounded bg-black/10 px-1.5 py-0.2 text-[10px] font-semibold dark:bg-white/10">
+		<span class="rounded-full bg-fg/10 px-1.5 py-0.2 text-[10px] font-semibold dark:bg-white/10">
 			{tParams('status.active_calls', { n: runtime.status.active_calls })}
 		</span>
 	{/if}

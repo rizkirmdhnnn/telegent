@@ -49,17 +49,16 @@
 	}
 </script>
 
-<div class="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
-	<div class="absolute top-4 right-4 flex items-center gap-2">
+<div class="flex min-h-screen flex-col items-center justify-center bg-bg p-4 dark:bg-deep-2 transition-colors">
+	<div class="absolute top-6 right-6 flex items-center gap-2.5">
 		<LanguageSwitch />
 		<ThemeSwitch />
 	</div>
 
 	<div class="w-full max-w-md">
-		<div class="mb-6 text-center">
-			<div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md">
-				<!-- Bot icon -->
-				<svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+		<div class="mb-8 text-center">
+			<div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent text-white shadow-xs">
+				<svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 					<rect x="3" y="11" width="18" height="10" rx="2"></rect>
 					<circle cx="12" cy="5" r="2"></circle>
 					<path d="M12 7v4"></path>
@@ -67,14 +66,15 @@
 					<line x1="16" y1="16" x2="16" y2="16"></line>
 				</svg>
 			</div>
-			<h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{t('auth.setup_title')}</h1>
-			<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('auth.setup_subtitle')}</p>
+			<p class="font-mono text-[11px] font-medium tracking-[0.14em] uppercase text-muted mb-1">Telegent Console</p>
+			<h1 class="text-2xl font-normal tracking-[-0.03em] text-fg">{t('auth.setup_title')}</h1>
+			<p class="mt-1.5 text-sm text-muted">{t('auth.setup_subtitle')}</p>
 		</div>
 
-		<Card class="shadow-sm">
+		<Card class="rounded-3xl p-6 shadow-xs border-border bg-white dark:border-white/10 dark:bg-deep">
 			<form onsubmit={handleSetup} class="space-y-4">
 				{#if error}
-					<div class="rounded-lg bg-red-50 p-3 text-xs text-red-600 dark:bg-red-950/40 dark:text-red-400">
+					<div class="rounded-xl border border-error/20 bg-error/10 p-3 font-mono text-xs text-error">
 						{error}
 					</div>
 				{/if}
@@ -104,7 +104,7 @@
 					autocomplete="new-password"
 				/>
 
-				<Button type="submit" variant="primary" {loading} class="w-full mt-2">
+				<Button type="submit" variant="primary" {loading} class="w-full mt-3">
 					{t('auth.create_admin')}
 				</Button>
 			</form>

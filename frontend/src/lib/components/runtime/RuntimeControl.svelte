@@ -103,14 +103,14 @@
 	{/if}
 
 	{#if runtime.transitioning}
-		<span class="text-xs text-slate-500 dark:text-slate-400" role="status">
+		<span class="font-mono text-xs text-muted" role="status">
 			{t(`status.${runtime.status.state}`)}
 		</span>
 	{/if}
 </div>
 
 {#if runtime.actionError}
-	<p class="mt-2 text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+	<p class="mt-2 font-mono text-xs font-medium text-error" role="alert">
 		{runtime.actionError}
 	</p>
 {/if}
@@ -121,14 +121,14 @@
 -->
 {#if runtime.status.state === 'error' || runtime.status.last_error}
 	<div
-		class="mt-3 rounded-lg border border-red-200 bg-red-50/70 p-3 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
+		class="mt-3 rounded-2xl border border-error/30 bg-error/10 p-3.5 text-xs text-error dark:bg-error/15"
 		role="alert"
 	>
-		<p class="font-semibold">{t('runtime.error_title')}</p>
+		<p class="font-semibold tracking-tight">{t('runtime.error_title')}</p>
 		{#if runtime.status.last_error}
-			<p class="mt-1 break-words">{runtime.status.last_error}</p>
+			<p class="mt-1 break-words font-mono text-[11px]">{runtime.status.last_error}</p>
 		{/if}
-		<div class="mt-2 flex flex-wrap items-center gap-2">
+		<div class="mt-2.5 flex flex-wrap items-center gap-2">
 			{#if runtime.status.state === 'not_configured'}
 				<a href="/credentials"><Button variant="outline" size="sm">{t('runtime.fix_credentials')}</Button></a>
 				<a href="/telegram"><Button variant="outline" size="sm">{t('runtime.fix_login')}</Button></a>

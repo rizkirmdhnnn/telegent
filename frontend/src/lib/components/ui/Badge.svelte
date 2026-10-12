@@ -10,16 +10,16 @@
 	let { variant = 'default', children, class: className = '' }: Props = $props();
 
 	const variantClasses = {
-		default: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
-		success: 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800',
-		warning: 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800',
-		destructive: 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800',
-		outline: 'border border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-300'
+		default: 'bg-bg-2 text-fg border border-border dark:bg-deep-2 dark:text-fg dark:border-white/10',
+		success: 'bg-accent/10 text-accent border border-accent/25 dark:bg-accent/20 dark:text-accent-2 dark:border-accent/30',
+		warning: 'bg-warm/15 text-warm border border-warm/25 dark:bg-warm/20 dark:text-warm dark:border-warm/30',
+		destructive: 'bg-red-700/10 text-red-800 border border-red-700/20 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700/30',
+		outline: 'border border-border-2 text-fg-2 dark:border-white/20 dark:text-fg'
 	};
 </script>
 
 <span
-	class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {variantClasses[variant]} {className}"
+	class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-mono font-medium {variantClasses[variant]} {className}"
 >
 	{#if children}
 		{@render children()}

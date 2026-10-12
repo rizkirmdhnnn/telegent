@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { theme, type Theme } from '$lib/stores/theme.svelte';
+	import { theme } from '$lib/stores/theme.svelte';
 	import { apiFetch } from '$lib/api';
 	import { t } from '$lib/i18n';
 
@@ -21,7 +21,7 @@
 	onclick={cycleTheme}
 	title={t('theme.title')}
 	aria-label={t('theme.title')}
-	class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+	class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-bg-2 text-fg hover:bg-bg-3 dark:border-white/10 dark:bg-deep-2 dark:text-fg dark:hover:bg-deep transition-colors"
 >
 	{#if theme.resolved === 'dark'}
 		<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

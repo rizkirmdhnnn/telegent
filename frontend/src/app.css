@@ -3,60 +3,201 @@
 /*
 	Tailwind v4 secara bawaan memakai `@media (prefers-color-scheme: dark)` untuk
 	variant `dark:`. Panel ini mengendalikannya sendiri lewat kelas `.dark` pada
-	<html> (lihat ThemeStore), jadi variantnya harus diganti ke mode kelas.
-	Tanpa baris ini, tombol tema tidak berpengaruh sama sekali.
+	<html> (lihat ThemeStore), jadi variantnya disesuaikan ke mode kelas.
 */
 @custom-variant dark (&:where(.dark, .dark *));
 
-@layer base {
-	:root {
-		--background: 0 0% 100%;
-		--foreground: 222.2 84% 4.9%;
-		--card: 0 0% 100%;
-		--card-foreground: 222.2 84% 4.9%;
-		--popover: 0 0% 100%;
-		--popover-foreground: 222.2 84% 4.9%;
-		--primary: 221.2 83.2% 53.3%;
-		--primary-foreground: 210 40% 98%;
-		--secondary: 210 40% 96.1%;
-		--secondary-foreground: 222.2 47.4% 11.2%;
-		--muted: 210 40% 96.1%;
-		--muted-foreground: 215.4 16.3% 46.9%;
-		--accent: 210 40% 96.1%;
-		--accent-foreground: 222.2 47.4% 11.2%;
-		--destructive: 0 84.2% 60.2%;
-		--destructive-foreground: 210 40% 98%;
-		--border: 214.3 31.8% 91.4%;
-		--input: 214.3 31.8% 91.4%;
-		--ring: 221.2 83.2% 53.3%;
-		--radius: 0.5rem;
-	}
+:root {
+	--app-bg: #FBF9F3;
+	--app-bg-2: #F6F2EA;
+	--app-bg-3: #EFEADF;
+	--app-subtle: #F6F2EA;
+	--app-card: #FFFFFF;
 
-	.dark {
-		--background: 222.2 84% 4.9%;
-		--foreground: 210 40% 98%;
-		--card: 222.2 84% 4.9%;
-		--card-foreground: 210 40% 98%;
-		--popover: 222.2 84% 4.9%;
-		--popover-foreground: 210 40% 98%;
-		--primary: 217.2 91.2% 59.8%;
-		--primary-foreground: 222.2 47.4% 11.2%;
-		--secondary: 217.2 32.6% 17.5%;
-		--secondary-foreground: 210 40% 98%;
-		--muted: 217.2 32.6% 17.5%;
-		--muted-foreground: 215 20.2% 65.1%;
-		--accent: 217.2 32.6% 17.5%;
-		--accent-foreground: 210 40% 98%;
-		--destructive: 0 62.8% 30.6%;
-		--destructive-foreground: 210 40% 98%;
-		--border: 217.2 32.6% 17.5%;
-		--input: 217.2 32.6% 17.5%;
-		--ring: 224.3 76.3% 48%;
-	}
+	--app-deep: #1A4A3B;
+	--app-deep-2: #123A2E;
+	--app-on-deep: #F3F0E6;
+	--app-on-deep-muted: #A9C2B3;
+
+	--app-fg: #12352A;
+	--app-fg-2: #3D5A4C;
+	--app-muted: #576A5D;
+	--app-muted-2: #8A9C90;
+
+	--app-border: #E4DFD3;
+	--app-border-2: #CFC8B8;
+	--app-error: #9B3222;
+
+	--background: 44 43% 97%;
+	--foreground: 163 48% 14%;
+	--card: 0 0% 100%;
+	--card-foreground: 163 48% 14%;
+	--popover: 0 0% 100%;
+	--popover-foreground: 163 48% 14%;
+	--primary: 23 66% 58%;
+	--primary-foreground: 44 43% 97%;
+	--secondary: 40 33% 94%;
+	--secondary-foreground: 163 48% 14%;
+	--muted-foreground: 140 9% 38%;
+	--accent-foreground: 163 48% 14%;
+	--destructive: 8 64% 37%;
+	--destructive-foreground: 44 43% 97%;
+	--input: 42 22% 86%;
+	--ring: 161 36% 27%;
+	--radius: 999px;
+}
+
+.dark {
+	/* Dark Charcoal: Abu-arang netral & tenang, bukan serba hijau */
+	--app-bg: #111312;
+	--app-bg-2: #161917;
+	--app-bg-3: #222623;
+	--app-subtle: #191C1A;
+	--app-card: #191C1A;
+
+	--app-deep: #191C1A;
+	--app-deep-2: #111312;
+	--app-on-deep: #F5F2EB;
+	--app-on-deep-muted: #8E9690;
+
+	--app-fg: #F5F2EB;
+	--app-fg-2: #C5C0B6;
+	--app-muted: #8E9690;
+	--app-muted-2: #656E68;
+
+	--app-border: rgba(245, 242, 235, 0.10);
+	--app-border-2: rgba(245, 242, 235, 0.20);
+	--app-error: #FF8573;
+
+	--background: 140 5% 7%;
+	--foreground: 45 25% 94%;
+	--card: 140 6% 10%;
+	--card-foreground: 45 25% 94%;
+	--popover: 140 6% 10%;
+	--popover-foreground: 45 25% 94%;
+	--primary: 23 66% 58%;
+	--primary-foreground: 45 25% 94%;
+	--secondary: 140 6% 14%;
+	--secondary-foreground: 45 25% 94%;
+	--muted-foreground: 140 5% 57%;
+	--accent-foreground: 45 25% 94%;
+	--destructive: 8 64% 37%;
+	--destructive-foreground: 45 25% 94%;
+	--input: rgba(245, 242, 235, 0.15);
+	--ring: 23 66% 58%;
+}
+
+@theme inline {
+	/* ── Dynamic Grounds & Cards ───────────────────────────── */
+	--color-bg: var(--app-bg);
+	--color-bg-2: var(--app-bg-2);
+	--color-bg-3: var(--app-bg-3);
+	--color-band: #E9EEE9;
+	--color-panel-sage: #F2F6F2;
+	--color-panel-warm: #FAF4EC;
+	--color-panel-clay: #FDF2EA;
+	--color-subtle: var(--app-subtle);
+	--color-card: var(--app-card);
+
+	/* ── Dynamic Ink ───────────────────────────────────────── */
+	--color-fg: var(--app-fg);
+	--color-fg-2: var(--app-fg-2);
+	--color-muted: var(--app-muted);
+	--color-muted-2: var(--app-muted-2);
+
+	/* ── Dynamic Deep Region Tokens ────────────────────────── */
+	--color-deep: var(--app-deep);
+	--color-deep-2: var(--app-deep-2);
+	--color-on-deep: var(--app-on-deep);
+	--color-on-deep-muted: var(--app-on-deep-muted);
+
+	/* ── Brand & Accents ───────────────────────────────────── */
+	--color-accent: #2D5F4C;
+	--color-accent-2: #C9D688;
+	--color-accent-soft: #E5EDE6;
+	--color-accent-fg: #FBF9F3;
+	--color-clay: #D9834E;
+	--color-clay-hover: #C9723D;
+	--color-warm: #C97B4A;
+	--color-error: var(--app-error);
+
+	/* ── Dynamic Lines ─────────────────────────────────────── */
+	--color-border: var(--app-border);
+	--color-border-2: var(--app-border-2);
+
+	/* ── Typography ────────────────────────────────────────── */
+	--font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+	--font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+	/* ── Radii ─────────────────────────────────────────────── */
+	--radius-media: 12px;
+	--radius-card: 16px;
+	--radius-panel: 24px;
+	--radius-card-lg: 30px;
 }
 
 body {
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-family: var(--font-sans);
+	background-color: var(--color-bg);
+	color: var(--color-fg);
 	margin: 0;
 	padding: 0;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+/* ── Typography Utilities (rizpedia.com) ─────────────────── */
+@utility font-display {
+	font-family: var(--font-sans);
+	font-weight: 400;
+	letter-spacing: -0.04em;
+	line-height: 1.2;
+}
+
+@utility type-display {
+	font-family: var(--font-sans);
+	font-weight: 400;
+	font-size: clamp(34px, 4.5vw, 56px);
+	letter-spacing: -0.04em;
+	line-height: 1.15;
+	text-wrap: balance;
+}
+
+@utility type-section {
+	font-family: var(--font-sans);
+	font-weight: 400;
+	font-size: clamp(26px, 3.2vw, 40px);
+	letter-spacing: -0.035em;
+	line-height: 1.2;
+	text-wrap: balance;
+}
+
+@utility type-title {
+	font-family: var(--font-sans);
+	font-weight: 400;
+	font-size: 22px;
+	letter-spacing: -0.02em;
+	line-height: 1.25;
+}
+
+@utility eyebrow {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--color-muted);
+}
+
+@utility idx {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--color-muted);
+	font-feature-settings: "tnum";
+	letter-spacing: 0.04em;
+}
+
+@utility h-em {
+	color: var(--color-muted);
 }

@@ -167,6 +167,7 @@ class FakeTelegramClient:
         self.api_hash = getattr(credentials, "api_hash", "")
         self.workdir = Path(workdir)
         self.started = False
+        self.is_connected = False
 
     @property
     def _me(self) -> Any:
@@ -176,29 +177,48 @@ class FakeTelegramClient:
             first_name=FAKE_TG_FIRST_NAME,
         )
 
+    async def connect(self) -> bool:
+        self.is_connected = True
+        # Bila berkas sesi sudah ada di disk, sesi dianggap sudah terotorisasi.
+        return (self.workdir / f"{self.session_name}.session").is_file()
+
+    async def disconnect(self) -> None:
+        self.is_connected = False
+        self.started = False
+
     async def start(self) -> None:
         self.workdir.mkdir(parents=True, exist_ok=True)
         (self.workdir / f"{self.session_name}.session").write_bytes(b"fake-session")
         self.started = True
+        self.is_connected = True
         log.info("[fake] Klien Telegram tiruan start (sesi=%s).", self.session_name)
 
     async def stop(self) -> None:
         self.started = False
+        self.is_connected = False
 
     async def send_code(self, phone: str) -> Any:
         log.info("[fake] Kode login dikirim ke %s.", mask_phone(phone))
         return SimpleNamespace(phone_code_hash=f"fake-code-hash-{FAKE_TG_ID}")
 
-    async def sign_in(self, phone: str, code: str, **_kwargs: Any) -> Any:
-        if code != FAKE_LOGIN_CODE:
+    async def sign_in(
+        self, phone_number: str, _phone_code_hash: str, phone_code: str
+    ) -> Any:
+        if phone_code != FAKE_LOGIN_CODE:
             # Pengecualian yang SAMA dengan Pyrogram asli: `PhoneCodeInvalid` agar
             # panel benar-benar menguji pemetaan kode `code_invalid`, bukan
             # `telegram_error` generik yang tidak akan pernah terjadi di produksi.
             raise PhoneCodeInvalid
-        log.info("[fake] Login tiruan berhasil untuk %s.", mask_phone(phone))
+        self.workdir.mkdir(parents=True, exist_ok=True)
+        (self.workdir / f"{self.session_name}.session").write_bytes(b"fake-session")
+        self.started = True
+        log.info("[fake] Login tiruan berhasil untuk %s.", mask_phone(phone_number))
         return self._me
 
     async def check_password(self, _password: str) -> Any:
+        self.workdir.mkdir(parents=True, exist_ok=True)
+        (self.workdir / f"{self.session_name}.session").write_bytes(b"fake-session")
+        self.started = True
         return self._me
 
     async def get_me(self) -> Any:
@@ -206,6 +226,7 @@ class FakeTelegramClient:
 
     async def log_out(self) -> None:
         self.started = False
+        self.is_connected = False
 
 
 def fake_client_factory(credentials: Any, workdir: Path) -> Any:

@@ -15,22 +15,22 @@
 	}
 </script>
 
-<div class="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900">
+<div class="inline-flex rounded-full border border-border bg-bg-2 p-0.5 dark:border-white/10 dark:bg-deep-2">
 	<button
 		type="button"
 		onclick={() => changeLocale('id')}
-		class="rounded-md px-2 py-1 text-xs font-medium transition-all {locale.current === 'id'
-			? 'bg-white text-blue-600 shadow-2xs dark:bg-slate-800 dark:text-blue-400'
-			: 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'}"
+		class="rounded-full px-2.5 py-1 text-xs font-mono font-medium transition-all {locale.current === 'id'
+			? 'bg-white text-fg shadow-2xs dark:bg-deep dark:text-fg'
+			: 'text-muted hover:text-fg dark:text-muted dark:hover:text-fg'}"
 	>
 		ID
 	</button>
 	<button
 		type="button"
 		onclick={() => changeLocale('en')}
-		class="rounded-md px-2 py-1 text-xs font-medium transition-all {locale.current === 'en'
-			? 'bg-white text-blue-600 shadow-2xs dark:bg-slate-800 dark:text-blue-400'
-			: 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'}"
+		class="rounded-full px-2.5 py-1 text-xs font-mono font-medium transition-all {locale.current === 'en'
+			? 'bg-white text-fg shadow-2xs dark:bg-deep dark:text-fg'
+			: 'text-muted hover:text-fg dark:text-muted dark:hover:text-fg'}"
 	>
 		EN
 	</button>

@@ -169,22 +169,22 @@
 
 <div class="mx-auto max-w-4xl space-y-6 pb-16">
 	<div>
-		<h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{t('telegram.title')}</h1>
-		<p class="text-xs text-slate-500 dark:text-slate-400">{t('telegram.subtitle')}</p>
+		<h1 class="text-2xl font-normal tracking-[-0.03em] text-fg">{t('telegram.title')}</h1>
+		<p class="text-xs text-muted mt-0.5">{t('telegram.subtitle')}</p>
 	</div>
 
 	{#if actionMessageKey}
-		<div class="rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" role="status">
+		<div class="rounded-2xl border border-accent/25 bg-accent/10 p-3 font-mono text-xs text-accent dark:text-accent-2" role="status">
 			{t(actionMessageKey)}
 		</div>
 	{/if}
 	{#if actionError}
-		<div class="rounded-lg bg-red-50 p-2.5 text-xs text-red-600 dark:bg-red-950/40 dark:text-red-400" role="alert">
+		<div class="rounded-2xl border border-error/20 bg-error/10 p-3 font-mono text-xs text-error" role="alert">
 			{t(`errors.${actionError.code}`, actionError.fallback)}
 		</div>
 	{/if}
 	{#if loadError}
-		<div class="rounded-lg bg-red-50 p-2.5 text-xs text-red-600 dark:bg-red-950/40 dark:text-red-400" role="alert">
+		<div class="rounded-2xl border border-error/20 bg-error/10 p-3 font-mono text-xs text-error" role="alert">
 			{t(`errors.${loadError.code}`, loadError.fallback)}
 		</div>
 	{/if}
@@ -198,14 +198,14 @@
 		<div class="flex items-center gap-2 pt-1">
 			<Badge variant={statusVariant}>{t(`status.${status?.status ?? 'unknown'}`)}</Badge>
 			{#if status?.last_error}
-				<span class="text-xs text-red-600 dark:text-red-400">
+				<span class="font-mono text-xs text-error">
 					{t(`errors.${status.last_error}`, status.last_error)}
 				</span>
 			{/if}
 		</div>
 
 		{#if needsCredentials}
-			<div class="mt-3 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+			<div class="mt-3 flex flex-col gap-2 rounded-2xl border border-warm/30 bg-warm/15 p-4 text-xs text-warm dark:border-warm/40 dark:bg-warm/20">
 				<span>{t('telegram.credentials_missing_desc')}</span>
 				<a href="/credentials" class="w-fit">
 					<Button variant="outline" size="sm">{t('telegram.go_to_credentials')}</Button>
@@ -215,9 +215,17 @@
 
 		{#if status?.session_mismatch}
 			<div
-				class="mt-3 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50/70 p-3 text-xs text-amber-800 sm:flex-row sm:items-center sm:justify-between dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+				class="mt-3 flex flex-col gap-2 rounded-2xl border border-warm/30 bg-warm/15 p-4 text-xs text-warm sm:flex-row sm:items-center sm:justify-between dark:border-warm/40 dark:bg-warm/20"
 			>
-				<span>{tParams('telegram.session_mismatch_desc', { current: status?.session_name ?? '' })}</span>
+				<div>
+					<p class="font-medium">{t('telegram.session_mismatch_title')}</p>
+					<p class="mt-0.5 text-[11px] opacity-85">
+						{tParams('telegram.session_mismatch_desc', {
+							active: status.session_name,
+							configured: status.phone ?? '—'
+						})}
+					</p>
+				</div>
 				<Button variant="outline" size="sm" loading={switchBusy} onclick={switchAccount}>
 					{t('telegram.switch_account')}
 				</Button>
@@ -225,36 +233,36 @@
 		{/if}
 
 		{#if loggedIn}
-			<dl class="mt-4 grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
+			<dl class="mt-4 grid grid-cols-1 gap-4 text-xs sm:grid-cols-2 pt-2 border-t border-border/70 dark:border-white/10">
 				<div>
-					<dt class="text-slate-500 dark:text-slate-400">{t('telegram.account_name')}</dt>
-					<dd class="mt-0.5 font-semibold text-slate-800 dark:text-slate-100">{displayName ?? '—'}</dd>
+					<dt class="font-mono text-[10px] uppercase tracking-wider text-muted">{t('telegram.account_name')}</dt>
+					<dd class="mt-0.5 font-medium text-sm text-fg">{displayName ?? '—'}</dd>
 				</div>
 				<div>
-					<dt class="text-slate-500 dark:text-slate-400">{t('telegram.account_username')}</dt>
-					<dd class="mt-0.5 font-mono text-slate-800 dark:text-slate-100">
+					<dt class="font-mono text-[10px] uppercase tracking-wider text-muted">{t('telegram.account_username')}</dt>
+					<dd class="mt-0.5 font-mono text-sm text-fg">
 						{status?.user?.username ? `@${status.user.username}` : '—'}
 					</dd>
 				</div>
 				<div>
-					<dt class="text-slate-500 dark:text-slate-400">{t('telegram.account_id')}</dt>
-					<dd class="mt-0.5 font-mono text-slate-800 dark:text-slate-100">{status?.user?.id ?? '—'}</dd>
+					<dt class="font-mono text-[10px] uppercase tracking-wider text-muted">{t('telegram.account_id')}</dt>
+					<dd class="mt-0.5 font-mono text-sm text-fg">{status?.user?.id ?? '—'}</dd>
 				</div>
 				<div>
-					<dt class="text-slate-500 dark:text-slate-400">{t('telegram.account_phone')}</dt>
-					<dd class="mt-0.5 font-mono text-slate-800 dark:text-slate-100">{status?.phone ?? '—'}</dd>
+					<dt class="font-mono text-[10px] uppercase tracking-wider text-muted">{t('telegram.account_phone')}</dt>
+					<dd class="mt-0.5 font-mono text-sm text-fg">{status?.phone ?? '—'}</dd>
 				</div>
 				<div>
-					<dt class="text-slate-500 dark:text-slate-400">{t('telegram.logged_in_at')}</dt>
-					<dd class="mt-0.5 text-slate-800 dark:text-slate-100">{loggedInAtText}</dd>
+					<dt class="font-mono text-[10px] uppercase tracking-wider text-muted">{t('telegram.logged_in_at')}</dt>
+					<dd class="mt-0.5 font-mono text-sm text-fg">{loggedInAtText}</dd>
 				</div>
 				<div>
-					<dt class="text-slate-500 dark:text-slate-400">{t('telegram.session_name')}</dt>
-					<dd class="mt-0.5 font-mono text-slate-800 dark:text-slate-100">{status?.session_name ?? '—'}</dd>
+					<dt class="font-mono text-[10px] uppercase tracking-wider text-muted">{t('telegram.session_name')}</dt>
+					<dd class="mt-0.5 font-mono text-sm text-fg">{status?.session_name ?? '—'}</dd>
 				</div>
 			</dl>
 
-			<div class="mt-4 flex flex-wrap items-center gap-2">
+			<div class="mt-5 flex flex-wrap items-center gap-2.5">
 				<Button variant="primary" size="sm" loading={startBusy} onclick={startBot}>
 					{t('telegram.start_bot')}
 				</Button>
@@ -265,7 +273,7 @@
 					{t('telegram.logout')}
 				</Button>
 			</div>
-			<p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{t('telegram.start_bot_hint')}</p>
+			<p class="mt-2.5 text-xs text-muted">{t('telegram.start_bot_hint')}</p>
 		{/if}
 	</Card>
 
@@ -273,8 +281,8 @@
 		<TelegramLoginStepper onloggedin={loadStatus} />
 	{/if}
 
-	<div class="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/60 p-4 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300">
+	<div class="flex items-center gap-3 rounded-2xl border border-border bg-bg-2 p-4 text-xs text-fg dark:border-white/10 dark:bg-deep">
 		<Badge variant="default">{t('telegram.notes_title')}</Badge>
-		<span>{t('telegram.notes_desc')}</span>
+		<span class="leading-relaxed">{t('telegram.notes_desc')}</span>
 	</div>
 </div>

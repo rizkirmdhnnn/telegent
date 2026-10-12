@@ -93,14 +93,14 @@
 
 <div class="mx-auto max-w-4xl space-y-6 pb-16">
 	<div>
-		<h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{t('tools.title')}</h1>
-		<p class="text-xs text-slate-500 dark:text-slate-400">{t('tools.subtitle')}</p>
+		<h1 class="text-2xl font-normal tracking-[-0.03em] text-fg">{t('tools.title')}</h1>
+		<p class="text-xs text-muted mt-0.5">{t('tools.subtitle')}</p>
 	</div>
 
 	{#if loading}
 		<div class="space-y-4">
 			{#each [1, 2] as _}
-				<div class="h-32 animate-pulse rounded-xl bg-slate-200/70 dark:bg-slate-800/60"></div>
+				<div class="h-32 animate-pulse rounded-2xl bg-bg-2/80 dark:bg-deep-2/60"></div>
 			{/each}
 		</div>
 	{:else}
@@ -110,7 +110,7 @@
 					<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 						<div class="space-y-1">
 							<div class="flex items-center gap-2">
-								<h3 class="text-base font-semibold text-slate-900 dark:text-slate-100">{tool.name}</h3>
+								<h3 class="font-mono text-sm font-medium text-fg">{tool.name}</h3>
 								{#if enabledMap[tool.name]}
 									<Badge variant="success">{t('tools.enabled')}</Badge>
 								{:else}
@@ -120,7 +120,7 @@
 									<Badge variant="default" class="text-[10px]">{t('tools.essential')}</Badge>
 								{/if}
 							</div>
-							<p class="text-xs text-slate-500 dark:text-slate-400">{tool.description}</p>
+							<p class="text-xs text-muted">{tool.description}</p>
 						</div>
 
 						<div class="shrink-0">
@@ -133,14 +133,14 @@
 					</div>
 
 					{#if !tool.can_disable}
-						<div class="mt-2 text-[11px] text-slate-400 italic">
+						<div class="mt-2 text-[11px] text-muted italic font-mono">
 							{t('tools.essential_tool')}
 						</div>
 					{/if}
 
 					<!-- Konfigurasi Tambahan per Tool -->
 					{#if tool.name === 'get_current_datetime'}
-						<div class="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+						<div class="mt-4 border-t border-border/70 pt-3 dark:border-white/10">
 							<div class="max-w-xs">
 								<Input
 									label={t('tools.timezone_label')}
@@ -154,13 +154,13 @@
 					{/if}
 
 					<!-- Status Message & Save Button -->
-					<div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
+					<div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-t border-border/70 pt-3 dark:border-white/10">
 						<div>
 							{#if messageMap[tool.name]}
-								<span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">{messageMap[tool.name]}</span>
+								<span class="font-mono text-xs font-medium text-accent dark:text-accent-2">{messageMap[tool.name]}</span>
 							{/if}
 							{#if errorMap[tool.name]}
-								<span class="text-xs font-medium text-red-600 dark:text-red-400">{errorMap[tool.name]}</span>
+								<span class="font-mono text-xs font-medium text-error">{errorMap[tool.name]}</span>
 							{/if}
 						</div>
 

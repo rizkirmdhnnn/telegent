@@ -60,19 +60,19 @@
 	}
 </script>
 
-<div class="rounded-xl border border-slate-200/80 bg-white p-4 shadow-2xs transition-all dark:border-slate-800 dark:bg-slate-900/80">
+<div class="rounded-2xl border border-border bg-white p-4.5 shadow-2xs transition-all dark:border-white/10 dark:bg-deep">
 	<div class="mb-2 flex items-start justify-between gap-3">
 		<div>
 			<div class="flex items-center gap-2">
-				<label for={`field-${spec.key}`} class="text-sm font-semibold text-slate-800 dark:text-slate-200">
+				<label for={`field-${spec.key}`} class="text-sm font-medium text-fg">
 					{t(`labels.${spec.key}`, spec.key)}
 				</label>
-				<code class="text-[10px] text-slate-400 font-mono">({spec.key})</code>
+				<code class="font-mono text-[10px] text-muted">({spec.key})</code>
 			</div>
 			{#if spec.description}
 				{@const help = t(`labels.${spec.key}.help`, '')}
 				{#if help}
-					<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{help}</p>
+					<p class="mt-0.5 text-xs text-muted">{help}</p>
 				{/if}
 			{/if}
 		</div>
@@ -80,9 +80,9 @@
 		<!-- Badge Mode Penerapan -->
 		<div class="flex items-center gap-1.5 shrink-0">
 			{#if spec.apply === 'hot'}
-				<Badge variant="success" class="text-[10px]">{t('settings.badge_hot')}</Badge>
+				<Badge variant="success">{t('settings.badge_hot')}</Badge>
 			{:else if spec.apply === 'restart'}
-				<Badge variant="warning" class="text-[10px]">{t('settings.badge_restart')}</Badge>
+				<Badge variant="warning">{t('settings.badge_restart')}</Badge>
 			{/if}
 		</div>
 	</div>
@@ -108,7 +108,7 @@
 					value = val;
 					onchange(val);
 				}}
-				class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+				class="w-full rounded-xl border border-border-2 bg-bg px-3.5 py-2 text-sm text-fg transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none disabled:opacity-50 dark:border-white/15 dark:bg-deep-2/70 dark:text-fg"
 			>
 				{#each spec.choices as choice}
 					<option value={choice}>{choice}</option>
@@ -125,22 +125,22 @@
 					value = val;
 					onchange(val);
 				}}
-				class="w-full rounded-lg border border-slate-300 bg-white p-3 font-mono text-xs leading-relaxed text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+				class="w-full rounded-xl border border-border-2 bg-bg p-3 font-mono text-xs leading-relaxed text-fg transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none disabled:opacity-50 dark:border-white/15 dark:bg-deep-2/70 dark:text-fg"
 			></textarea>
 		{:else if spec.type === 'int_list'}
 			<!-- Chips multiline untuk allowed_user_ids -->
 			<div class="space-y-2">
-				<div class="flex flex-wrap gap-1.5 min-h-8 rounded-lg border border-slate-200 bg-slate-50/50 p-2 dark:border-slate-800 dark:bg-slate-950/40">
+				<div class="flex min-h-9 flex-wrap gap-1.5 rounded-xl border border-border bg-bg-2/50 p-2 dark:border-white/10 dark:bg-deep-2/40">
 					{#if Array.isArray(value) && value.length > 0}
 						{#each value as idNum}
-							<span class="inline-flex items-center gap-1 rounded-md bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+							<span class="inline-flex items-center gap-1.5 rounded-full border border-accent/20 bg-accent/10 px-2.5 py-0.5 font-mono text-xs font-medium text-accent dark:text-accent-2">
 								<span>{idNum}</span>
 								{#if !readonly}
 									<button
 										type="button"
 										onclick={() => removeChip(idNum)}
 										aria-label={`Hapus ID ${idNum}`}
-										class="hover:text-red-500 font-bold"
+										class="hover:text-error font-bold"
 									>
 										&times;
 									</button>
@@ -148,7 +148,7 @@
 							</span>
 						{/each}
 					{:else}
-						<span class="text-xs text-slate-400 italic py-0.5">Semua pengguna diizinkan (kosong)</span>
+						<span class="text-xs text-muted italic py-0.5 font-mono">Semua pengguna diizinkan (kosong)</span>
 					{/if}
 				</div>
 
@@ -159,17 +159,17 @@
 							placeholder="Masukkan ID Telegram (mis. 123456789)..."
 							bind:value={chipInput}
 							onkeydown={handleChipKeyDown}
-							class="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+							class="flex-1 rounded-xl border border-border-2 bg-bg px-3 py-1.5 font-mono text-xs text-fg focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none dark:border-white/15 dark:bg-deep-2/70 dark:text-fg"
 						/>
 						<button
 							type="button"
 							onclick={addChip}
-							class="rounded-lg bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+							class="rounded-full border border-border-2 bg-bg-2 px-3.5 py-1.5 text-xs font-medium text-fg hover:bg-bg-3 dark:border-white/15 dark:bg-deep-2 dark:hover:bg-deep transition-colors"
 						>
 							Tambah ID
 						</button>
 					</div>
-					<p class="text-[11px] text-slate-400">{t('settings.allowed_user_ids_hint')}</p>
+					<p class="font-mono text-[11px] text-muted">{t('settings.allowed_user_ids_hint')}</p>
 				{/if}
 			</div>
 		{:else if spec.type === 'int' || spec.type === 'float'}
@@ -188,7 +188,7 @@
 					value = finalVal;
 					onchange(finalVal);
 				}}
-				class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+				class="w-full rounded-xl border border-border-2 bg-bg px-3.5 py-2 font-mono text-sm text-fg transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none disabled:opacity-50 dark:border-white/15 dark:bg-deep-2/70 dark:text-fg"
 			/>
 		{:else}
 			<!-- text biasa -->
@@ -202,12 +202,12 @@
 					value = val;
 					onchange(val);
 				}}
-				class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+				class="w-full rounded-xl border border-border-2 bg-bg px-3.5 py-2 text-sm text-fg transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none disabled:opacity-50 dark:border-white/15 dark:bg-deep-2/70 dark:text-fg"
 			/>
 		{/if}
 
 		{#if error}
-			<p class="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>
+			<p class="mt-1 font-mono text-xs text-error font-medium">{error}</p>
 		{/if}
 	</div>
 </div>
