@@ -5,8 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# Salah satu job gagal → PR tidak boleh di-merge.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  backend:
+    name: Backend (pytest + pyright)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
@@ -24,3 +30,142 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -q
+
+  frontend:
+    name: Frontend (check + unit + build)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check (svelte-check)
+        run: npm run check
+
+      - name: Unit tests (Vitest)
+        run: npm run test
+
+      - name: Build SPA
+        run: npm run build
+
+  e2e:
+    name: E2E (Playwright, mode fake)
+    runs-on: ubuntu-24.04
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5.0.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      # Server dijalankan mode fake (TELEGENT_FAKE=1, disetel `webServer` di
+      # playwright.config.ts): tidak ada kredensial dan tidak ada koneksi ke
+      # Telegram/Gemini. Tidak ada `.env` di repo ini, jadi tidak ada kebocoran.
+      - name: Run Playwright
+        run: npm run test:e2e
+        working-directory: frontend
+        env:
+          CI: 'true'
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 14
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: playwright-traces
+          path: frontend/test-results
+          retention-days: 14
+
+  docker:
+    name: Image (build + runtime tanpa Node)
+    runs-on: ubuntu-24.04
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: docker/setup-buildx-action@v4.0.0
+
+      - name: Build image
+        uses: docker/build-push-action@v7.0.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: telegent:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Image akhir harus benar-benar bisa menjalankan panel tanpa toolchain Node
+      # dan tanpa kredensial apa pun (perangkap #1 G1).
+      - name: Pastikan image tidak memuat Node
+        run: |
+          docker run --rm --entrypoint sh telegent:ci -c \
+            '! command -v node && ! command -v npm && test -f /app/web/index.html'
+
+      - name: Smoke test panel
+        run: |
+          docker run -d --name telegent-ci \
+            -e TELEGENT_DATA_DIR=/data -e TELEGENT_HOST=0.0.0.0 -e TELEGENT_PORT=8080 \
+            -p 127.0.0.1:8080:8080 \
+            telegent:ci
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/api/healthz >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8080/api/healthz | tee /dev/stderr | grep -q '"ok":true'
+          curl -sf http://127.0.0.1:8080/api/setup/status | grep -q '"needs_setup":true'
+          docker exec telegent-ci test -f /data/telegent.db
+          docker exec telegent-ci test -f /data/.secret_key
+
+      - name: Log container
+        if: failure()
+        run: docker logs telegent-ci || true
+
+      - name: Hapus container
+        if: always()
+        run: docker rm -f telegent-ci || true

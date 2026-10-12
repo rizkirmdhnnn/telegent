@@ -248,3 +248,90 @@ async def test_batas_durasi_nol_tidak_memicu_hangup(settings):
     # Tanpa batas: task langsung selesai tanpa menjadwalkan hangup.
     await asyncio.wait_for(session._enforce_max_duration(), timeout=1.0)
     assert session._hangup_task is None
+
+
+# ------------------- regresi: jendela idle dihitung sejak AI selesai bicara
+
+
+async def test_prompt_tidak_menyala_langsung_setelah_ai_selesai_bicara(settings):
+    """Regresi (2026-10-11): jendela idle harus dihitung sejak AI berhenti bicara.
+
+    Sebelumnya dihitung sejak `_last_caller_activity`. Kalau AI menjawab lebih
+    lama dari `idle_prompt_seconds`, begitu AI berhenti bicara prompt langsung
+    menyala dan penelpon tidak sempat menjawab.
+    """
+    settings.idle_enabled = True
+    settings.idle_prompt_seconds = 3.0
+    settings.idle_hangup_seconds = 100.0
+
+    live = FakeLiveSession()
+    session = make_session(settings=settings, live=live)
+    session._live = live
+    session.state = SessionState.ACTIVE
+    session.is_greeting = False
+    # Penelpon bicara 60 detik lalu; AI baru saja selesai bicara.
+    now = time.monotonic()
+    session._last_caller_activity = now - 60.0
+    session._last_output_activity = now
+
+    task = asyncio.create_task(session._idle_watchdog())
+    try:
+        # Timeout harus DI ANTARA IDLE_AI_QUIET_SEC (1.5 dtk) dan
+        # idle_prompt_seconds (3 dtk): cukup lama untuk logika lama salah
+        # mulai memicu, tapi belum cukup untuk memicu yang benar.
+        terlewat = await _wait(lambda: len(live.prompts) >= 1, timeout=2.5)
+        assert not terlewat, "prompt menyala sebelum penelpon sempat menjawab"
+    finally:
+        await _cancel(task)
+
+    assert live.prompts == []
+
+
+async def test_prompt_menyala_setelah_jendela_since_ai_selesai(settings):
+    """Setelah jendela berlalu dari AI selesai bicara, prompt tetap dikirim."""
+    settings.idle_enabled = True
+    settings.idle_prompt_seconds = 0.2
+    settings.idle_hangup_seconds = 100.0
+
+    live = FakeLiveSession()
+    session = make_session(settings=settings, live=live)
+    session._live = live
+    session.state = SessionState.ACTIVE
+    session.is_greeting = False
+    now = time.monotonic()
+    session._last_caller_activity = now - 60.0
+    session._last_output_activity = now
+
+    task = asyncio.create_task(session._idle_watchdog())
+    try:
+        ok = await _wait(lambda: len(live.prompts) >= 1, timeout=4.0)
+    finally:
+        await _cancel(task)
+
+    assert ok
+    assert live.prompts[0] == settings.idle_prompt_instruction
+
+
+async def test_jendela_diambil_dari_peristiwa_terakhir(settings):
+    """Bila penelpon bicara SETELAH AI, jendela dihitung dari pembicaraan penelpon."""
+    settings.idle_enabled = True
+    settings.idle_prompt_seconds = 0.2
+    settings.idle_hangup_seconds = 100.0
+
+    live = FakeLiveSession()
+    session = make_session(settings=settings, live=live)
+    session._live = live
+    session.state = SessionState.ACTIVE
+    session.is_greeting = False
+    now = time.monotonic()
+    # AI bicara 60 detik lalu; penelpon baru bicara sekarang.
+    session._last_output_activity = now - 60.0
+    session._last_caller_activity = now
+
+    task = asyncio.create_task(session._idle_watchdog())
+    try:
+        ok = await _wait(lambda: len(live.prompts) >= 1, timeout=4.0)
+    finally:
+        await _cancel(task)
+
+    assert ok, "jendela harus dihitung dari pembicaraan penelpon terakhir"

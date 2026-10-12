@@ -39,12 +39,15 @@ class Settings(BaseSettings):
 
     # --- Sesi Telegram ---
     telegram_session_name: str = "userbot_session"
-    # Nama env resmi adalah TELEGRAM_SESSION_DIR (lihat .env.example & Dockerfile).
-    # "SESSION_DIR"/"session_dir" dipertahankan agar tetap kompatibel.
+    # Satu sumber kebenaran untuk direktori data (G1): `TELEGENT_DATA_DIR` yang
+    # sama dibaca `telegent.web.bootstrap`, jadi DB, `*.session`, dan
+    # `.secret_key` selalu berada di satu volume.
+    # "TELEGRAM_SESSION_DIR"/"SESSION_DIR" dipertahankan sebagai alias lama
+    # untuk deployment .env yang sudah ada.
     session_dir: str = Field(
         default=".",
         validation_alias=AliasChoices(
-            "TELEGRAM_SESSION_DIR", "SESSION_DIR", "session_dir"
+            "TELEGENT_DATA_DIR", "TELEGRAM_SESSION_DIR", "SESSION_DIR", "session_dir"
         ),
     )
 

@@ -20,6 +20,20 @@ def configure_logging(level: str = "INFO") -> None:
     _configured = True
 
 
+def set_root_level(level: str | int) -> None:
+    """Terapkan level log ke logger root.
+
+    Dipanggil juga oleh web panel: tanpa ini logger root tetap di level default
+    Python (WARNING) sehingga log INFO tidak pernah sampai ke aliran SSE
+    `/logs/stream`.
+    """
+    if isinstance(level, int):
+        resolved = level
+    else:
+        resolved = getattr(logging, str(level).upper(), logging.INFO)
+    logging.getLogger().setLevel(resolved)
+
+
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="id">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Telegent Web Panel</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Hanken+Grotesk:wght@300;400;500;600;700&display=swap"
+			rel="stylesheet"
+		/>
+		%sveltekit.head%
+		<script>
+			// Terapkan tema sebelum render pertama agar tidak ada kedipan terang.
+			// Logikanya sengaja sama dengan ThemeStore.apply().
+			try {
+				var tersimpan = localStorage.getItem('telegent_theme');
+				var gelap =
+					tersimpan === 'dark' ||
+					(tersimpan !== 'light' &&
+						window.matchMedia('(prefers-color-scheme: dark)').matches);
+				document.documentElement.classList.toggle('dark', gelap);
+			} catch (e) {
+				/* localStorage diblokir: gunakan tema bawaan sistem */
+			}
+		</script>
+	</head>
+	<body class="bg-bg text-fg antialiased selection:bg-accent selection:text-white">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

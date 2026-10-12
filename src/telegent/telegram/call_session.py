@@ -18,7 +18,13 @@ from telegent.ai.events import (
     TurnComplete,
 )
 from telegent.ai.tools.registry import ToolRegistry
-from telegent.ai.tools.spec import ToolContext, ToolRequest
+from telegent.ai.tools.spec import (
+    TOOL_STATUS_CANCELLED,
+    TOOL_STATUS_ERROR,
+    ToolContext,
+    ToolRequest,
+    ToolResponse,
+)
 from telegent.audio.cadence import Cadence, run_cadence_sender
 from telegent.audio.framing import PcmFramer
 from telegent.audio.resampler import pcm24k_to_pcm48k, pcm48k_to_pcm16k
@@ -40,6 +46,30 @@ IDLE_AI_QUIET_SEC = 1.5
 IDLE_FAREWELL_MIN_WAIT = 6.0
 
 LiveFactory = Callable[[], AbstractAsyncContextManager[LiveVoiceSession]]
+
+#: Callback peristiwa sesi untuk pemantau (mis. panel web): (event, data) -> None.
+#: **Sinkron dan wajib non-memblokir** — dipanggil dari jalur yang sama dengan
+#: audio, jadi hanya boleh mengantrekan pekerjaan, bukan melakukan I/O.
+SessionEventHook = Callable[[str, dict[str, Any]], None]
+
+#: Alasan pengakhiran panggilan (spesifikasi §5.5 `end_reason`).
+END_REASON_AI = "ai_end_call"
+END_REASON_MAX_DURATION = "max_duration"
+END_REASON_IDLE = "idle"
+END_REASON_PANEL = "panel_hangup"
+END_REASON_CALLER = "caller_hangup"
+END_REASON_REJECTED = "rejected"
+END_REASON_ERROR = "error"
+
+#: Hasil panggilan (spesifikasi §5.5 `outcome`). Didefinisikan di sini karena
+#: ini kosakata siklus hidup panggilan; lapisan web mengimpornya dari modul ini.
+OUTCOME_PENDING = "pending"
+OUTCOME_ANSWERED = "answered"
+OUTCOME_REJECTED_WHITELIST = "rejected_whitelist"
+OUTCOME_REJECTED_RATELIMIT = "rejected_ratelimit"
+OUTCOME_REJECTED_CAPACITY = "rejected_capacity"
+OUTCOME_REJECTED_DUPLICATE = "rejected_duplicate"
+OUTCOME_ERROR = "error"
 
 
 class SessionState(Enum):
@@ -69,6 +99,7 @@ class CallSession:
         settings: Settings,
         logger: Any,
         on_stop: Optional[Callable[[], Awaitable[None]]] = None,
+        on_event: Optional[SessionEventHook] = None,
     ) -> None:
         self.user_id = user_id
         self.call_id = call_id
@@ -79,6 +110,10 @@ class CallSession:
         self._settings = settings
         self._log = logger
         self._on_stop = on_stop
+        self._on_event = on_event
+        #: Alasan Ending pemicu (dipilih saat hangup dijadwalkan); dipakai
+        #: pemantau untuk mengisi `end_reason`.
+        self.end_reason: str | None = None
 
         self.state = SessionState.INCOMING_CALL
         self.gemini_in_queue: asyncio.Queue = asyncio.Queue(maxsize=150)
@@ -118,6 +153,19 @@ class CallSession:
     def set_state(self, new_state: SessionState) -> None:
         self._log.info("Transisi status: %s -> %s", self.state.value, new_state.value)
         self.state = new_state
+
+    def _notify(self, event: str, data: dict[str, Any]) -> None:
+        """Terbitkan peristiwa sesi ke pemantau opsional.
+
+        Sengaja sinkron + tahan galat: pemantau tidak boleh memperlambat atau
+        menjatuhkan pemrosesan audio. Tanpa pemantau, pemanggilan ini nol biaya.
+        """
+        if self._on_event is None:
+            return
+        try:
+            self._on_event(event, data)
+        except Exception:  # noqa: BLE001 - kegagalan pemantau tidak boleh mengganggu sesi
+            self._log.debug("Gagal menerbitkan event '%s'.", event, exc_info=True)
 
     @staticmethod
     def _drain_queue(queue: asyncio.Queue) -> None:
@@ -198,7 +246,7 @@ class CallSession:
             return
         if self.state == SessionState.ACTIVE and not self._closing:
             self._log.warning("Batas durasi panggilan (%.0f dtk) tercapai.", limit)
-            self.schedule_hangup()
+            self.schedule_hangup(reason=END_REASON_MAX_DURATION)
 
     async def close(self) -> None:
         """Tutup sesi (idempoten)."""
@@ -286,9 +334,11 @@ class CallSession:
                         await self._enqueue_outbound(frame)
                 elif isinstance(event, TranscriptIn):
                     self._log.info("[Penelpon] %s", event.text)
+                    self._notify("transcript", {"speaker": "caller", "text": event.text})
                     self._note_caller_activity()
                 elif isinstance(event, TranscriptOut):
                     self._log.info("[AI] %s", event.text)
+                    self._notify("transcript", {"speaker": "ai", "text": event.text})
                 elif isinstance(event, Interrupted):
                     self._note_caller_activity()
                     if not self.is_greeting:
@@ -365,18 +415,38 @@ class CallSession:
 
     async def _run_tool(self, request: ToolRequest) -> None:
         self._log.info("Menjalankan tool '%s' args=%s", request.name, request.args)
+        started = time.monotonic()
         ctx = ToolContext(
             user_id=self.user_id,
             call_id=self.call_id,
             logger=self._log,
             hangup=self.schedule_hangup,
         )
+        status = TOOL_STATUS_CANCELLED
+        result: Optional[ToolResponse] = None
         try:
             result = await self._tools.execute(ctx, request)
+            status = result.status
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - kegagalan tool sudah ditangani registry
+            self._log.warning("Gagal menjalankan tool '%s': %s", request.name, exc)
+            result = None
+            status = TOOL_STATUS_ERROR
         finally:
             self._tool_tasks.pop(request.id, None)
+            self._notify(
+                "tool_call",
+                {
+                    "name": request.name,
+                    "args": request.args,
+                    "result": result.response if result is not None else None,
+                    "status": status,
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                },
+            )
 
-        if self._live is not None:
+        if self._live is not None and result is not None:
             try:
                 await self._live.send_tool_response([result])
                 self._log.info("Tool '%s' selesai: %s", request.name, result.response)
@@ -391,12 +461,14 @@ class CallSession:
             task.cancel()
 
     # --------------------------------------------------------------- hangup
-    def schedule_hangup(self, min_wait: float = 0.0) -> None:
+    def schedule_hangup(self, min_wait: float = 0.0, *, reason: str = END_REASON_AI) -> None:
         """Jadwalkan pengakhiran panggilan setelah audio jawaban selesai diputar.
 
         `min_wait` memberi tenggang minimal (detik) sebelum panggilan ditutup —
-        dipakai saat kita minta AI mengucapkan pamitan lebih dulu. Sinkron: aman
-        dipanggil dari handler tool (tidak memblokir penerimaan).
+        dipakai saat kita minta AI mengucapkan pamitan lebih dulu. `reason`
+        mencatat pemicu (spesifikasi §5.5 `end_reason`) dan tetap pada nilai
+        pertama saat dipanggil ulang. Sinkron: aman dipanggil dari handler tool
+        (tidak memblokir penerimaan).
         """
         if self._hangup_scheduled or self._closing:
             return
@@ -404,6 +476,7 @@ class CallSession:
         now = time.monotonic()
         self._hangup_started = now
         self._hangup_min_wait = min_wait
+        self.end_reason = reason
         self._last_output_activity = now
         self._log.info("Permintaan mengakhiri panggilan; menunggu audio habis diputar.")
         self._hangup_task = asyncio.create_task(
@@ -464,10 +537,18 @@ class CallSession:
 
                 now = time.monotonic()
                 if not self._idle_prompted:
-                    caller_idle = now - self._last_caller_activity
+                    # Jendela diam dihitung sejak kejadian TERAKHIR — baik
+                    # penelpon bicara, atau AI selesai berbicara. Kalau hanya
+                    # dihitung sejak penelpon bicara, jawaban AI yang panjang
+                    # membuat prompt langsung menyala begitu AI berhenti bicara
+                    # — penelpon tidak sempat menjawab sama sekali.
+                    window_start = max(
+                        self._last_caller_activity, self._last_output_activity
+                    )
+                    silent_for = now - window_start
                     ai_idle = now - self._last_output_activity
                     if (
-                        caller_idle >= self._settings.idle_prompt_seconds
+                        silent_for >= self._settings.idle_prompt_seconds
                         and ai_idle >= IDLE_AI_QUIET_SEC
                         and self.tg_out_queue.empty()
                         and not self._tool_tasks
@@ -475,14 +556,17 @@ class CallSession:
                         self._idle_prompted = True
                         self._idle_deadline = now + self._settings.idle_hangup_seconds
                         self._log.info(
-                            "Penelpon diam %.0f dtk; mengirim konfirmasi.", caller_idle
+                            "Diam %.0f dtk sejak percakapan terakhir; mengirim konfirmasi.",
+                            silent_for,
                         )
                         await self._send_prompt(self._settings.idle_prompt_instruction)
                 elif now >= self._idle_deadline:
                     self._log.info("Penelpon tetap tidak menjawab; mengakhiri panggilan.")
                     self._idle_prompted = False
                     await self._send_prompt(self._settings.idle_farewell_instruction)
-                    self.schedule_hangup(min_wait=IDLE_FAREWELL_MIN_WAIT)
+                    self.schedule_hangup(
+                        min_wait=IDLE_FAREWELL_MIN_WAIT, reason=END_REASON_IDLE
+                    )
                     break
         except asyncio.CancelledError:
             pass

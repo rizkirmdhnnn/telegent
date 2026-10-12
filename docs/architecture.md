@@ -74,12 +74,18 @@ Watchdog per sesi (`CallSession._idle_watchdog`) menjaga panggilan agar tidak me
 1. **Deteksi aktivitas penelpon** dari event yang sudah ada: `TranscriptIn`
    (ucapan tertranskripsi) dan `Interrupted` (barge-in) → mereset timer
    (`_note_caller_activity`).
-2. **Diam ≥ `IDLE_PROMPT_SECONDS`** (dan AI sudah selesai bicara, antrean audio
-   kosong, tidak ada tool berjalan) → AI **mengonfirmasi** ("masih di sana?")
-   lewat `LiveVoiceSession.send_prompt`.
+2. **Diam ≥ `IDLE_PROMPT_SECONDS`** → AI **mengonfirmasi** ("masih di sana?")
+   lewat `LiveVoiceSession.send_prompt`. Jendela "diam" dihitung sejak kejadian
+   **terakhir**: baik penelpon bicara maupun AI selesai berbicara
+   (`max(_last_caller_activity, _last_output_activity)`). Kalau hanya dihitung
+   sejak penelpon bicara, jawaban AI yang panjang membuat prompt menyala begitu
+   AI berhenti bicara — penelpon tidak sempat menjawab sama sekali.
 3. **Tanpa respons ≥ `IDLE_HANGUP_SECONDS`** setelah konfirmasi → AI diminta
    mengucapkan **pamitan singkat**, lalu `schedule_hangup(min_wait=...)` menutup
    panggilan setelah audio selesai diputar.
+
+Syarat tambahan: AI benar-benar selesai bicara (antrean audio kosong, tidak ada
+tool berjalan, dan sudah `IDLE_AI_QUIET_SEC` sejak frame terakhir).
 
 Ambang dikonfigurasi via `IDLE_ENABLED`, `IDLE_PROMPT_SECONDS`,
 `IDLE_HANGUP_SECONDS`. Bila penelpon kembali bersuara, status konfirmasi direset

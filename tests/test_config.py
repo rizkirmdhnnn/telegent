@@ -44,6 +44,37 @@ def test_session_workdir_dibuat(tmp_path):
     assert workdir.exists() and workdir.is_dir()
 
 
+def test_session_dir_dibaca_dari_env_telegent_data_dir(monkeypatch, tmp_path):
+    """G1: `TELEGENT_DATA_DIR` adalah nama kanon satu-satunya (perangkap #3).
+
+    Nilai ini dibaca `telegent.web.bootstrap` juga, jadi DB, `*.session`, dan
+    `.secret_key` selalu berada di satu direktori yang sama.
+    """
+    monkeypatch.delenv("TELEGRAM_SESSION_DIR", raising=False)
+    monkeypatch.delenv("SESSION_DIR", raising=False)
+    monkeypatch.setenv("TELEGENT_DATA_DIR", str(tmp_path / "data"))
+    settings = Settings(
+        telegram_api_id=1,
+        telegram_api_hash="h",
+        gemini_api_key="k",
+        _env_file=None,  # type: ignore[call-arg]
+    )
+    assert settings.session_dir == str(tmp_path / "data")
+
+
+def test_telegent_data_dir_menang_atas_alias_lama(monkeypatch, tmp_path):
+    """Kalau keduanya terisi, nama kanon yang dipakai — bukan acak."""
+    monkeypatch.setenv("TELEGENT_DATA_DIR", str(tmp_path / "baru"))
+    monkeypatch.setenv("TELEGRAM_SESSION_DIR", str(tmp_path / "lama"))
+    settings = Settings(
+        telegram_api_id=1,
+        telegram_api_hash="h",
+        gemini_api_key="k",
+        _env_file=None,  # type: ignore[call-arg]
+    )
+    assert settings.session_dir == str(tmp_path / "baru")
+
+
 def test_session_dir_dibaca_dari_env_telegram_session_dir(monkeypatch, tmp_path):
     """Regresi B1: env resmi TELEGRAM_SESSION_DIR harus terbaca (bukan SESSION_DIR)."""
     monkeypatch.setenv("TELEGRAM_SESSION_DIR", str(tmp_path / "data"))

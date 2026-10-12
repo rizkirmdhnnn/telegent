@@ -1,0 +1,773 @@
+"""Test `TelegramLoginService` (tiket D1).
+
+Pyrogram di-*stub* sepenuhnya — tidak ada jaringan yang tersentuh. Skema
+skenario digerakkan lewat `FakeTelegram`, sehingga alur sukses, 2FA, FloodWait,
+dan setiap pemetaan galat dapat diuji tanpa akun Telegram sungguhan.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Iterator
+from datetime import timedelta
+from pathlib import Path
+from typing import Any
+
+import pytest
+from pyrogram.errors import (
+    FloodWait,
+    PasswordHashInvalid,
+    PhoneCodeExpired,
+    PhoneCodeInvalid,
+    PhoneNumberInvalid,
+    SessionPasswordNeeded,
+)
+
+from web_helpers import SECRET_CODE_HASH, FakeTelegram, FakeTelegramClient
+
+from telegent.web.db import models
+from telegent.web.db.base import Database, utcnow
+from telegent.web.events import EventBus
+from telegent.web.log_stream import BusLogHandler, LogRingBuffer, SecretRedactor
+from telegent.web.settings_store import SettingsStore
+from telegent.web.telegram_errors import TelegramLoginError, map_exception
+from telegent.web.telegram_login import TelegramLoginService, normalize_phone
+from telegent.web.telegram_store import (
+    ACCOUNT_LOGGED_IN,
+    ACCOUNT_NOT_CONFIGURED,
+    FLOW_AWAITING_PASSWORD,
+    FLOW_CODE_SENT,
+)
+
+_API_ID = 12345678
+_API_HASH = "0123456789abcdef0123456789abcdef"
+_PHONE = "+6281234567890"
+_CODE = "54321"
+_WRONG_CODE = "987654"
+_2FA_PASSWORD = "rahasia-super-2fa"
+
+# --------------------------------------------------------------------- fixtures
+
+
+@pytest.fixture
+async def service(
+    database: Database,
+    store: SettingsStore,
+    tmp_path: Path,
+) -> TelegramLoginService:
+    """Layanan login dengan kredensial Telegram sudah terisi."""
+    await store.update(
+        {"telegram_api_id": _API_ID, "telegram_api_hash": _API_HASH},
+        actor="test",
+    )
+    return TelegramLoginService(
+        database,
+        store,
+        data_dir=tmp_path / "data",
+        client_factory=FakeTelegram.factory,
+    )
+
+
+async def _account(database: Database) -> models.TelegramAccount | None:
+    async with database.session() as session:
+        return await session.get(models.TelegramAccount, 1)
+
+
+async def _flows(database: Database) -> list[models.LoginFlow]:
+    from sqlalchemy import select
+
+    async with database.session() as session:
+        rows = (await session.execute(select(models.LoginFlow))).scalars().all()
+        return list(rows)
+
+
+# ------------------------------------------------------------------ happy path
+
+
+async def test_login_s_ukses_tanpa_2fa(
+    service: TelegramLoginService, database: Database
+) -> None:
+    start = await service.start(_PHONE)
+    assert start.next == "code"
+    assert start.flow_id > 0
+
+    flows = await _flows(database)
+    assert len(flows) == 1
+    assert flows[0].phone == _PHONE
+    assert flows[0].status == FLOW_CODE_SENT
+    assert flows[0].expires_at > utcnow()
+
+    result = await service.verify(start.flow_id, _CODE)
+    assert result.next == "done"
+
+    account = await _account(database)
+    assert account is not None
+    assert account.status == ACCOUNT_LOGGED_IN
+    assert account.tg_user_id == 5550001
+    assert account.tg_username == "telegent_bot"
+    assert account.tg_first_name == "Telegent"
+    assert account.phone == _PHONE
+    assert account.logged_in_at is not None
+    assert account.last_error is None
+
+    # Flow selesai langsung dibuang.
+    assert await _flows(database) == []
+    # Klien dilepas agar berkas sesi bisa dipakai runtime.
+    assert FakeTelegram.instances[-1].stopped is True
+
+
+async def test_status_menampilkan_akun_setelah_login(
+    service: TelegramLoginService,
+) -> None:
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    status = await service.status()
+    assert status["status"] == ACCOUNT_LOGGED_IN
+    assert status["phone"] == _PHONE
+    assert status["user"] == {
+        "id": 5550001,
+        "username": "telegent_bot",
+        "first_name": "Telegent",
+    }
+    assert status["credentials_configured"] is True
+    assert status["session_mismatch"] is False
+    assert status["last_error"] is None
+    assert isinstance(status["logged_in_at"], str)
+
+
+async def test_login_dengan_2fa(
+    service: TelegramLoginService, database: Database
+) -> None:
+    FakeTelegram.sign_in_error = SessionPasswordNeeded()
+    start = await service.start(_PHONE)
+
+    result = await service.verify(start.flow_id, _CODE)
+    assert result.next == "password"
+
+    flows = await _flows(database)
+    assert len(flows) == 1
+    assert flows[0].status == FLOW_AWAITING_PASSWORD
+
+    await service.submit_password(start.flow_id, _2FA_PASSWORD)
+
+    account = await _account(database)
+    assert account is not None
+    assert account.status == ACCOUNT_LOGGED_IN
+    assert account.tg_user_id == 5550001
+    assert await _flows(database) == []
+    assert FakeTelegram.instances[-1].checked_password == _2FA_PASSWORD
+
+
+async def test_password_salah_menolak_tanpa_mengganti_status(
+    service: TelegramLoginService, database: Database
+) -> None:
+    FakeTelegram.sign_in_error = SessionPasswordNeeded()
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    FakeTelegram.password_error = PasswordHashInvalid()
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.submit_password(start.flow_id, "salah")
+    assert excinfo.value.code == "password_invalid"
+
+    # Flow tetap hidup supaya admin mencoba lagi.
+    flows = await _flows(database)
+    assert len(flows) == 1 and flows[0].status == FLOW_AWAITING_PASSWORD
+
+    FakeTelegram.password_error = None
+    await service.submit_password(start.flow_id, _2FA_PASSWORD)
+    account = await _account(database)
+    assert account is not None and account.status == ACCOUNT_LOGGED_IN
+
+
+# --------------------------------------------------------------- pemetaan galat
+
+
+@pytest.mark.parametrize(
+    ("exception", "expected_code"),
+    [
+        (PhoneNumberInvalid(), "phone_invalid"),
+        (PhoneCodeInvalid(), "code_invalid"),
+        (PhoneCodeExpired(), "code_expired"),
+        (PasswordHashInvalid(), "password_invalid"),
+        (FloodWait(value=42), "flood_wait"),
+        (ConnectionError("jaringan mati"), "telegram_unreachable"),
+        (TimeoutError("timeout"), "telegram_unreachable"),
+        (RuntimeError("aneh"), "telegram_error"),
+    ],
+)
+def test_map_exception_menghasilkan_kode_stabil(
+    exception: BaseException, expected_code: str
+) -> None:
+    error = map_exception(exception)
+    assert error.code == expected_code
+    assert isinstance(error.message, str) and error.message
+
+
+def test_flood_wait_membawa_retry_after() -> None:
+    error = map_exception(FloodWait(value=137))
+    assert error.code == "flood_wait"
+    assert error.retry_after == 137
+    assert error.status_code == 429
+    assert error.fields() == {"retry_after": 137}
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("+62 812-3456-7890", "+6281234567890"),
+        ("081234567890", "+081234567890"),
+        ("  +6281234567890 ", "+6281234567890"),
+    ],
+)
+def test_normalize_phone(raw: str, expected: str) -> None:
+    assert normalize_phone(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["", "   ", "abc", "+62", "12345", "+62" * 20])
+def test_normalize_phone_menolak_tidak_valid(raw: str) -> None:
+    with pytest.raises(TelegramLoginError) as excinfo:
+        normalize_phone(raw)
+    assert excinfo.value.code == "phone_invalid"
+
+
+async def test_nomor_tidak_valid_ditolak_sebelum_jaringan(
+    service: TelegramLoginService,
+) -> None:
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.start("bukan-nomor")
+    assert excinfo.value.code == "phone_invalid"
+    assert FakeTelegram.instances == []
+
+
+async def test_login_baru_ditolak_sudah_login(service: TelegramLoginService) -> None:
+    """Ganti akun harus lewat logout (keputusan: satu akun Telegram aktif)."""
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.start("+6289999999999")
+    assert excinfo.value.code == "already_logged_in"
+    assert excinfo.value.status_code == 409
+
+    # Setelah logout, login lagi diperbolehkan.
+    await service.logout()
+    lagi = await service.start("+6289999999999")
+    assert lagi.next == "code"
+
+
+async def test_kode_terlalu_panjang_ditolak(
+    service: TelegramLoginService, database: Database
+) -> None:
+    start = await service.start(_PHONE)
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.verify(start.flow_id, "abcdefghijk")
+    assert excinfo.value.code == "code_invalid"
+    # Alur tidak consumed: admin masih bisa mengetik kode yang benar.
+    assert len(await _flows(database)) == 1
+
+
+async def test_flood_wait_dari_send_code(
+    service: TelegramLoginService, database: Database
+) -> None:
+    FakeTelegram.send_code_error = FloodWait(value=300)
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.start(_PHONE)
+
+    assert excinfo.value.code == "flood_wait"
+    assert excinfo.value.retry_after == 300
+    assert await _flows(database) == []
+    account = await _account(database)
+    assert account is not None and account.last_error == "flood_wait"
+
+
+async def test_kode_salah_mencatat_last_error(
+    service: TelegramLoginService, database: Database
+) -> None:
+    start = await service.start(_PHONE)
+    FakeTelegram.sign_in_error = PhoneCodeInvalid()
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.verify(start.flow_id, "00000")
+
+    assert excinfo.value.code == "code_invalid"
+    account = await _account(database)
+    assert account is not None
+    assert account.last_error == "code_invalid"
+    assert account.status != ACCOUNT_LOGGED_IN
+
+
+async def test_kredensial_belum_diisi_gagal_jelas(
+    database: Database, store: SettingsStore, tmp_path: Path
+) -> None:
+    service = TelegramLoginService(
+        database, store, data_dir=tmp_path / "data", client_factory=FakeTelegram.factory
+    )
+    status = await service.status()
+    assert status["status"] == ACCOUNT_NOT_CONFIGURED
+    assert status["credentials_configured"] is False
+
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.start(_PHONE)
+    assert excinfo.value.code == "api_credentials_missing"
+    assert excinfo.value.status_code == 409
+
+
+# ------------------------------------------------------------------- lifecycle
+
+
+async def test_cancel_membuang_flow(
+    service: TelegramLoginService, database: Database
+) -> None:
+    start = await service.start(_PHONE)
+    client = FakeTelegram.instances[-1]
+
+    await service.cancel(start.flow_id)
+
+    assert await _flows(database) == []
+    assert client.stopped is True
+
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.cancel(start.flow_id)
+    assert excinfo.value.code == "flow_not_found"
+
+
+async def test_flow_baru_membatalkan_flow_lama(
+    service: TelegramLoginService, database: Database
+) -> None:
+    first = await service.start(_PHONE)
+    first_client = FakeTelegram.instances[-1]
+
+    second = await service.start(_PHONE)
+
+    assert first_client.stopped is True
+    # Id flow tidak pernah dipakai ulang, jadi flow lama benar-benar hilang.
+    assert second.flow_id != first.flow_id
+    flows = await _flows(database)
+    assert [flow.id for flow in flows] == [second.flow_id]
+
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.verify(first.flow_id, _CODE)
+    assert excinfo.value.code == "flow_not_found"
+
+
+async def test_flow_kedaluwarsa_ditolak(
+    service: TelegramLoginService, database: Database
+) -> None:
+    start = await service.start(_PHONE)
+    async with database.session() as session:
+        flow = await session.get(models.LoginFlow, start.flow_id)
+        assert flow is not None
+        flow.expires_at = utcnow() - timedelta(minutes=1)
+
+    with pytest.raises(TelegramLoginError) as excinfo:
+        await service.verify(start.flow_id, _CODE)
+    assert excinfo.value.code == "flow_expired"
+    assert excinfo.value.status_code == 410
+
+
+async def test_cleanup_expired_membuang_flow_kedaluwarsa(
+    service: TelegramLoginService, database: Database
+) -> None:
+    fresh = await service.start(_PHONE)
+    async with database.session() as session:
+        session.add(
+            models.LoginFlow(
+                phone=_PHONE,
+                phone_code_hash=SECRET_CODE_HASH,
+                status=FLOW_CODE_SENT,
+                created_at=utcnow() - timedelta(minutes=30),
+                expires_at=utcnow() - timedelta(minutes=20),
+            )
+        )
+
+    removed = await service.cleanup_expired()
+
+    assert removed == 1
+    remaining = await _flows(database)
+    assert [flow.id for flow in remaining] == [fresh.flow_id]
+
+
+async def test_logout_menghapus_berkas_sesi(
+    service: TelegramLoginService, database: Database, tmp_path: Path
+) -> None:
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+    session_file = service.session_path("userbot_session")
+    assert session_file.is_file()
+    # Berkas logamamping dari proses lain ikut dibersihkan.
+    stray = service.session_path("userbot_session").with_suffix(".session-journal")
+    stray.write_bytes(b"stray")
+
+    result = await service.logout()
+
+    assert result["removed_session_files"] >= 2
+    assert result["remote_error"] is None
+    assert not session_file.exists()
+    assert not stray.exists()
+
+    status = await service.status()
+    assert status["status"] != ACCOUNT_LOGGED_IN
+    assert status["user"] is None
+    assert status["logged_in_at"] is None
+
+    account = await _account(database)
+    assert account is not None
+    assert account.status != ACCOUNT_LOGGED_IN
+    # Nomor telepon disimpan agar admin mudah login lagi.
+    assert account.phone == _PHONE
+
+
+async def test_logout_tetap_berhasil_walau_gagal_di_sisi_telegram(
+    service: TelegramLoginService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    async def failing_log_out(self: FakeTelegramClient) -> None:
+        raise ConnectionError("tidak terjangkau")
+
+    monkeypatch.setattr(FakeTelegramClient, "log_out", failing_log_out)
+    result = await service.logout()
+
+    assert result["remote_error"] == "telegram_unreachable"
+    assert result["removed_session_files"] >= 1
+    assert not service.session_path("userbot_session").exists()
+    status = await service.status()
+    assert status["status"] != ACCOUNT_LOGGED_IN
+
+
+async def test_status_menandai_perlu_login_ulang_saat_nama_sesi_diubah(
+    service: TelegramLoginService, store: SettingsStore
+) -> None:
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    await store.update({"telegram_session_name": "sesi_lain"}, actor="test")
+
+    status = await service.status()
+    # Data akun dipertahankan, hanya ditandai perlu login ulang (Q10).
+    assert status["status"] == ACCOUNT_LOGGED_IN
+    assert status["session_mismatch"] is True
+    assert status["session_name"] == "sesi_lain"
+
+
+async def test_status_turun_jadi_logged_out_bila_berkas_sesi_hilang(
+    service: TelegramLoginService, tmp_path: Path
+) -> None:
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+    service.session_path("userbot_session").unlink()
+
+    status = await service.status()
+    assert status["status"] == "logged_out"
+
+
+async def test_flow_dipakai_lagi_setelah_restart_proses(
+    database: Database, store: SettingsStore, tmp_path: Path
+) -> None:
+    """Klien hilang dari memori (proses web restart) tetapi flow di DB masih hidup."""
+    await store.update(
+        {"telegram_api_id": _API_ID, "telegram_api_hash": _API_HASH}, actor="test"
+    )
+    data_dir = tmp_path / "data"
+    first = TelegramLoginService(
+        database, store, data_dir=data_dir, client_factory=FakeTelegram.factory
+    )
+    start = await first.start(_PHONE)
+
+    # Simulasi restart: instance baru dengan state memori kosong.
+    second = TelegramLoginService(
+        database, store, data_dir=data_dir, client_factory=FakeTelegram.factory
+    )
+    result = await second.verify(start.flow_id, _CODE)
+
+    assert result.next == "done"
+    # Urutan Pyrogram: (phone_number, phone_code_hash, phone_code).
+    assert FakeTelegram.instances[-1].signed_in_with == (
+        _PHONE,
+        SECRET_CODE_HASH,
+        _CODE,
+    )
+
+
+# ------------------------------------------------------------------- keamanan
+
+
+async def _jalankan_seluruh_alur(service: TelegramLoginService) -> None:
+    """Login 2FA sukses → logout → percobaan gagal dengan kode lain → logout lagi."""
+    FakeTelegram.sign_in_error = SessionPasswordNeeded()
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+    await service.submit_password(start.flow_id, _2FA_PASSWORD)
+    await service.logout()
+
+    # Percobaan gagal dengan kode berbeda harus tetap hanya memunculkan kodenya.
+    FakeTelegram.sign_in_error = PhoneCodeInvalid()
+    ulang = await service.start(_PHONE)
+    with pytest.raises(TelegramLoginError):
+        await service.verify(ulang.flow_id, _WRONG_CODE)
+
+    await service.cleanup_expired()
+    await service.logout()
+
+
+#: Nilai sensitif yang tidak boleh muncul di log telegent maupun log panel.
+_RAHASIA = (SECRET_CODE_HASH, _2FA_PASSWORD, _CODE, _WRONG_CODE, _API_HASH)
+
+
+async def test_tidak_pernah_log_kode_password_atau_hash(
+    service: TelegramLoginService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Log milik telegent tidak boleh memuat kode OTP, password, atau code hash."""
+    caplog.set_level(logging.DEBUG, logger="telegent")
+
+    await _jalankan_seluruh_alur(service)
+
+    teks = "\n".join(
+        record.getMessage() for record in caplog.records if record.name.startswith("telegent")
+    )
+    for rahasia in _RAHASIA:
+        assert rahasia not in teks, f"rahasia bocor ke log: {rahasia[:6]}…"
+
+
+async def test_log_panel_meredaksi_bahwa_pun_terbocor_pustaka_lain(
+    database: Database, store: SettingsStore, tmp_path: Path
+) -> None:
+    """Handler log panel (yang dilihat admin) meredaksi nilai sensitif apa pun.
+
+    Lapis kedua: pustaka pihak ketiga (mis. driver SQLite pada level DEBUG) bisa
+    mencetak nilai sebagai argumen query. `SecretRedactor` menutup kebocoran itu.
+    """
+    redactor = SecretRedactor()
+    buffer = LogRingBuffer()
+    bus = EventBus()
+    handler = BusLogHandler(bus, buffer, redactor)
+    root = logging.getLogger()
+    root_level = root.level
+    root.setLevel(logging.DEBUG)  # skenario terburuk: admin memakai log_level=DEBUG
+    root.addHandler(handler)
+    try:
+        await store.update(
+            {"telegram_api_id": _API_ID, "telegram_api_hash": _API_HASH}, actor="test"
+        )
+        service = TelegramLoginService(
+            database,
+            store,
+            data_dir=tmp_path / "data",
+            redactor=redactor,
+            client_factory=FakeTelegram.factory,
+        )
+        await _jalankan_seluruh_alur(service)
+        # Simulasikan pustaka lain yang mencetak nilai sensitif sebagai argumen SQL.
+        logging.getLogger("aiosqlite.core").debug(
+            f"INSERT INTO login_flow VALUES ({SECRET_CODE_HASH!r}, {_2FA_PASSWORD!r})"
+        )
+    finally:
+        root.removeHandler(handler)
+        root.setLevel(root_level)
+
+    teks = "\n".join(entry["message"] for entry in buffer.recent())
+    for rahasia in _RAHASIA:
+        assert rahasia not in teks, f"rahasia bocor ke log panel: {rahasia[:6]}…"
+    assert "[REDACTED]" in teks
+
+
+async def test_redactor_mendaftarkan_phone_code_hash(
+    database: Database, store: SettingsStore, tmp_path: Path
+) -> None:
+    redactor = SecretRedactor()
+    await store.update(
+        {"telegram_api_id": _API_ID, "telegram_api_hash": _API_HASH}, actor="test"
+    )
+    service = TelegramLoginService(
+        database,
+        store,
+        data_dir=tmp_path / "data",
+        redactor=redactor,
+        client_factory=FakeTelegram.factory,
+    )
+
+    await service.start(_PHONE)
+
+    assert redactor.redact(f"hash={SECRET_CODE_HASH}") == "hash=[REDACTED]"
+    assert redactor.redact(f"hash={_API_HASH}") == "hash=[REDACTED]"
+
+# ------------------------------- regresi: jangan pernah pakai Client.start()
+
+
+async def test_login_tidak_pernah_memakai_start(
+    service: TelegramLoginService,
+) -> None:
+    """`Client.start()` memicu prompt nomor telepon di stdin bila sesi kosong.
+
+    Pada container tanpa TTY itu menggantung, dan user melihat
+    "Enter phone number or bot token:" lalu login gagal.
+    Klien tiruan menolak `start()`, jadi tes ini mengunci kelas bug tersebut.
+
+    Regresi nyata: ditemukan lewat smoke test `docker compose up` (2026-10-11),
+    bukan lewat tes — karena tanpa TTY, prompt hanya muncul di container.
+    """
+    from web_helpers import FakeTelegramClient
+
+    start_dipanggil = 0
+    asli = FakeTelegramClient.start
+
+    async def start_paksa_gagal(self):  # type: ignore[no-untyped-def]
+        nonlocal start_dipanggil
+        start_dipanggil += 1
+        raise AssertionError("klien login memanggil Client.start()")
+
+    FakeTelegramClient.start = start_paksa_gagal  # type: ignore[assignment]
+    try:
+        start = await service.start(_PHONE)
+        await service.verify(start.flow_id, _CODE)
+    finally:
+        FakeTelegramClient.start = asli  # type: ignore[assignment]
+
+    assert start_dipanggil == 0
+
+
+async def test_remote_logout_lewati_klien_yg_belum_terotorisasi(
+    service: TelegramLoginService, database: Database
+) -> None:
+    """Sesi belum terotorisasi → tidak ada yang bisa di-logout, dan tak ada prompt.
+
+    Kalau jalur ini memakai `start()`, Pyrogram akan meminta nomor telepon di
+    stdin dan administrator akan menggantung tanpa bisa membatalkan.
+    """
+    from web_helpers import FakeTelegram
+
+    await service.start(_PHONE)
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    # Klien berikutnya dibuat dalam keadaan belum terotorisasi.
+    FakeTelegram.authorized = False
+    hasil = await service.logout()
+
+    assert hasil["remote_error"] is None
+    assert not any(c.logged_out for c in FakeTelegram.instances[-1:]), (
+        "log_out() tidak boleh dipanggil pada klien yang belum terotorisasi"
+    )
+
+
+def test_pabrik_klien_login_tidak_menetapkan_nomor_telepon() -> None:
+    """Klien login dibangun tanpa nomor telepon; itu pemicu `authorize()`."""
+    from telegent.web.telegram_login import (
+        TelegramCredentials,
+        default_client_factory,
+    )
+
+    dibuat = {}
+
+    class _Tangkap:
+        def __init__(self, name, **kwargs):
+            dibuat["name"] = name
+            dibuat.update(kwargs)
+
+        async def start(self):  # tidak akan dipakai
+            raise AssertionError
+
+    import telegent.web.telegram_login as modul
+
+    _ClientAsli = modul.Client
+    modul.Client = _Tangkap  # type: ignore[assignment]  # type: ignore[assignment]
+    try:
+        default_client_factory(
+            TelegramCredentials(api_id=1, api_hash="h", session_name="s"),
+            Path("/tmp"),
+        )
+    finally:
+        modul.Client = _ClientAsli
+
+    assert dibuat.get("phone_number") in (None, ""), (
+        "menyetel phone_number membuat start() ikut interactive login"
+    )
+
+
+# ------------------------- regresi: urutan argumen sign_in (tidak boleh tertukar)
+
+
+async def test_sign_in_mengirim_hash_dan_kode_ke_slot_yang_benar(
+    service: TelegramLoginService,
+) -> None:
+    """Pyrogram: `sign_in(phone_number, phone_code_hash, phone_code)`.
+
+    Regresi nyata (2026-10-11): kode OTP dikirim pada slot `phone_code_hash`
+    dan hash dikirim pada slot `phone_code`. Telegram menolak dengan BadRequest
+    yang dipetakan menjadi `telegram_error` — kode yang benar tetap ditolak.
+    """
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    phone, code_hash, code = FakeTelegram.instances[-1].signed_in_with
+    assert phone == _PHONE
+    assert code_hash == SECRET_CODE_HASH, "hash harus di slot kedua"
+    assert code == _CODE, "kode OTP harus di slot ketiga"
+
+
+async def test_kode_ditukar_tidak_lagi_terjadi(service: TelegramLoginService) -> None:
+    """PGuardia tambahan: nilai yang sama tidak boleh tertukar diam-diam."""
+    start = await service.start(_PHONE)
+    await service.verify(start.flow_id, _CODE)
+
+    _, code_hash, code = FakeTelegram.instances[-1].signed_in_with
+    assert code_hash != code
+
+
+# ----------------------------- regresi: galat tak terpetakan harus terlihat di log
+
+
+async def test_galat_tak_terpetakan_mencatat_jenis_aslinya(
+    service: TelegramLoginService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`telegram_error` sendirinya tidak informatif — log harus menyebut penyebabnya.
+
+    Tanpa ini, operator hanya melihat "Telegram menolak permintaan ini" dan tidak
+    pernah tahu galat sebenarnya (terbukti saat smoke test 2026-10-11).
+    """
+    import logging
+
+    FakeTelegram.sign_in_error = ValueError("PHONE_CODE_HASH_INVALID")
+    with caplog.at_level(logging.WARNING, logger="telegent.web.telegram"):
+        start = await service.start(_PHONE)
+        with pytest.raises(TelegramLoginError):
+            await service.verify(start.flow_id, _CODE)
+
+    pesan = "\n".join(record.getMessage() for record in caplog.records)
+    assert "telegram_error" in pesan
+    assert "ValueError" in pesan, "jenis exception asli harus muncul di log"
+    assert "PHONE_CODE_HASH_INVALID" in pesan, "pesan asli harus muncul di log"
+
+
+async def test_pesan_galat_terredaksi(
+    database: Database, store: SettingsStore, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Nilai sensitif tidak boleh bocor ke log meski ada di pesan exception."""
+    import logging
+
+    from telegent.web.log_stream import SecretRedactor
+
+    rahasia = "AIzaSyRahasiaYangPanjangSekali1234567890"
+    redactor = SecretRedactor([rahasia])
+    service = TelegramLoginService(
+        database,
+        store,
+        data_dir=tmp_path / "data",
+        redactor=redactor,
+        client_factory=FakeTelegram.factory,
+    )
+    await store.update(
+        {"telegram_api_id": _API_ID, "telegram_api_hash": _API_HASH}
+    )
+
+    FakeTelegram.sign_in_error = RuntimeError(f"gagal dengan {rahasia}")
+    with caplog.at_level(logging.WARNING, logger="telegent.web.telegram"):
+        start = await service.start(_PHONE)
+        with pytest.raises(TelegramLoginError):
+            await service.verify(start.flow_id, _CODE)
+
+    pesan = "\n".join(record.getMessage() for record in caplog.records)
+    assert "RuntimeError" in pesan, "jenis exception tetap harus terlihat"
+    assert rahasia not in pesan, "nilai sensitif bocor ke log"
